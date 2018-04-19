@@ -7,6 +7,7 @@
 #include <exception>
 #include <libusb-1.0/libusb.h>
 
+#include "amqp.hpp"
 #define VENDOR_ID 0x0cd4
 #define PRODUCT_ID 0x0101
 
@@ -141,21 +142,76 @@ class PC2Mixer {
 
     void transmit(bool transmit_enabled) {
         if (transmit_enabled == true) {
+            this->device->send_telegram({0xe7, 0x00});
             this->device->send_telegram({0xe5, 0x00, 0x01, 0x00, 0x00});
         } else {
-            this->device->send_telegram({0xe5, 0x00, 0x00, 0x00, 0x00});
+            this->device->send_telegram({0xe5, 0x00, 0x00, 0x00, 0x01});
+            this->device->send_telegram({0xe7, 0x01});
         }
     };
+
+    void set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance) {
+        this->device->send_telegram({0xe3, volume, treble, bass, balance});
+    }
+};
+
+class Beo4 {
+    public:
+    static uint8_t source_from_keycode (uint8_t beo4_code) {
+        std::map<uint8_t, uint8_t> map;
+        map[0x80] = 0x0B;
+        map[0x81] = 0x6F;
+        map[0x82] = 0x33;
+        map[0x83] = 0x00;
+        map[0x84] = 0x00;
+        map[0x85] = 0x16;
+        map[0x86] = 0x29;
+        map[0x87] = 0x00;
+        map[0x88] = 0x00;
+        map[0x8A] = 0x1F;
+        map[0x8B] = 0x47;
+        map[0x8C] = 0x00;
+        map[0x8D] = 0x3E;
+        map[0x8E] = 0x00;
+        map[0x90] = 0x00;
+        map[0x91] = 0x79;
+        map[0x92] = 0x8D;
+        map[0x93] = 0xA1;
+        map[0x94] = 0x00;
+        map[0x95] = 0x00;
+        map[0x96] = 0x00;
+        map[0x97] = 0x00;
+        map[0xA8] = 0x00;
+        map[0x47] = 0x00;
+        map[0x0C] = 0x00;
+        map[0xFA] = 0x00;
+        return map[beo4_code];
+    }
+
+    static bool is_source_key (uint8_t beo4_code) {
+        std::vector<uint8_t> source_keys = {0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,\
+                                              0x88, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x90, 0x91,\
+                                              0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xA8, 0x47,\
+                                              0x0C, 0xFA};
+        for (auto i: source_keys) {
+            if(beo4_code == i) return true;
+        }
+
+        return false;
+    }
 };
 
 class PC2 {
     PC2USBDevice *device;
     PC2Mixer *mixer;
+    AMQP *amqp;
+    uint8_t active_source = 0;
 
     public:
     PC2() {
         this->device = new PC2USBDevice;        
         this->mixer = new PC2Mixer(this->device);
+        this->amqp = new AMQP;
     }
 
     void yield() {
@@ -207,7 +263,7 @@ class PC2 {
 
         std::map<uint8_t, std::string> tgram_type_map;
         tgram_type_map[0x04] = "Unknown 0x04";
-        tgram_type_map[0x04] = "Unknown 0x10";
+        tgram_type_map[0x10] = "Unknown 0x10";
         tgram_type_map[0x40] = "Clock update";
 
         std::map<uint8_t, uint8_t> tgram_len_map;
@@ -221,6 +277,13 @@ class PC2 {
                 break;
             case(0x87):
                 printf("| Active source is: 0x%02X.\n", tgram[13]);
+                break;
+            case(0x10):
+                if(!memcmp("\x10\x03\x03\x01\x00\x01", (void *)tgram.data() + 10, 6)) {
+                    printf("| Beosystem 3 is requesting audio control back. Relinquishing...\n");
+                    this->mixer->transmit(false);
+                }
+                break;
         }
 
         printf("| Length: 0x%02x (%s)\n", tgram[1], (tgram[1] == tgram_len_map[tgram[10]] ? "as expected" : "differs from observed so far"));
@@ -234,61 +297,59 @@ class PC2 {
     void send_beo4_code(uint8_t dest, uint8_t code) {
         this->device->send_telegram({0x60, 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00, 0x61});
     };
+
     void process_telegram(PC2Telegram & tgram) {
         if(tgram[2] == 0x00) {
             process_ml_telegram(tgram);
         }
         if(tgram[2] == 0x02) {
-            printf("Got remote control code %02x\n", tgram[6]);
-            if(tgram[6] == 0x91) {
-                this->device->send_telegram({0xfa, 0x38, 0xf0, 0x88, 0x40, 0x00, 0x00});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0x83,0xc1,0x01,0x14,0x00,0x7a,0x00,0x87,0x1e,0x04,0x7a,0x02,0x00,0x00,0x40, \
-                                             0x28,0x01,0x00,0x00,0x00,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, \
-                                             0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x62,0x00,0x00});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x01,0x01,0xa4,0x00});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x08,0x00,0x01,0x96,0x00});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xea, 0xff});
-                yield();
-                yield();
-                yield();
-                this->device->send_telegram({0xea, 0x81});
-                yield();
-                yield();
-                this->device->send_telegram({0xfa, 0x30, 0xd0, 0x65, 0x80, 0x6c, 0x22});
-                yield();
-                this->device->send_telegram({0xf9, 0x64});
-                yield();
-                yield();
-                this->device->send_telegram({0xe7, 0x00});
-                this->device->send_telegram({0xe3, 0x22, 0x00, 0x00, 0x00});
-                this->mixer->transmit(true);
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x44,0x08,0x05,0x02,0x79,0x00,0x02,0x01,0x00,0x00,0x00,0x65,0x00});
-                yield();
-                yield();
-                this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x82,0x0a,0x01,0x06,0x79,0x00,0x02,0x00,0x00,0x00,0x00,0x00,0x01,0xa5,0x00});
-                yield();
-                yield();
-
+            if(Beo4::is_source_key(tgram[6])) {
+                printf("Active source change\n");
+                if(tgram[6] == 0x91) {
+                    printf("%02x, %02x\n", this->active_source, Beo4::source_from_keycode(tgram[6]));
+                    if(this->active_source != Beo4::source_from_keycode(tgram[6]))
+                        send_audio();
+                    printf("no need to send audio\n");
+                }
+                this->active_source = Beo4::source_from_keycode(tgram[6]);
+                this->amqp->set_active_source(this->active_source);
             }
+            printf("Got remote control code %02x\n", tgram[6]);
+            char *hexmsg = (char *)malloc(3);
+            sprintf(hexmsg, "%02X", tgram[6]);
+            this->amqp->send_message(hexmsg);
+            free(hexmsg);
         }
+    }
+
+    void send_audio() {
+        PC2Telegram telegram;
+        this->device->send_telegram({0xfa, 0x38, 0xf0, 0x88, 0x40, 0x00, 0x00});
+        telegram = this->device->get_data();
+        this->device->send_telegram({0xe0,0x83,0xc1,0x01,0x14,0x00,0x7a,0x00,0x87,0x1e,0x04,0x7a,0x02,0x00,0x00,0x40, \
+                0x28,0x01,0x00,0x00,0x00,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, \
+                0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x62,0x00,0x00});
+        telegram = this->device->get_data(); // expect an ACK
+        this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x01,0x01,0xa4,0x00});
+        telegram = this->device->get_data(); // expect an ACK
+        telegram = this->device->get_data(); // expect reply from V MASTER
+        this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00});
+        telegram = this->device->get_data(); // expect an ACK
+        telegram = this->device->get_data(); // expect reply from V MASTER
+        this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x08,0x00,0x01,0x96,0x00});
+        telegram = this->device->get_data(); // expect an ACK
+        telegram = this->device->get_data(); // expect reply from V MASTER
+        this->device->send_telegram({0xea, 0xff}); // does not generate a reply
+        this->device->send_telegram({0xea, 0x81}); // this, however, does
+        telegram = this->device->get_data(); // not sure what this is
+        this->device->send_telegram({0xfa, 0x30, 0xd0, 0x65, 0x80, 0x6c, 0x22});
+        this->device->send_telegram({0xf9, 0x64});
+        this->mixer->set_parameters(0x22, 0, 0, 0);
+        this->mixer->transmit(true);
+        this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x44,0x08,0x05,0x02,0x79,0x00,0x02,0x01,0x00,0x00,0x00,0x65,0x00});
+        telegram = this->device->get_data(); // expect an ACK
+        this->device->send_telegram({0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x82,0x0a,0x01,0x06,0x79,0x00,0x02,0x00,0x00,0x00,0x00,0x00,0x01,0xa5,0x00});
+        telegram = this->device->get_data(); // expect an ACK
     }
 
     void event_loop() {
