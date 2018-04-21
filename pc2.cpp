@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <ctime>
 #include <string>
 #include <map>
 #include <boost/log/trivial.hpp>
@@ -162,29 +163,14 @@ class Beo4 {
         map[0x80] = 0x0B;
         map[0x81] = 0x6F;
         map[0x82] = 0x33;
-        map[0x83] = 0x00;
-        map[0x84] = 0x00;
         map[0x85] = 0x16;
         map[0x86] = 0x29;
-        map[0x87] = 0x00;
-        map[0x88] = 0x00;
         map[0x8A] = 0x1F;
         map[0x8B] = 0x47;
-        map[0x8C] = 0x00;
         map[0x8D] = 0x3E;
-        map[0x8E] = 0x00;
-        map[0x90] = 0x00;
         map[0x91] = 0x79;
         map[0x92] = 0x8D;
         map[0x93] = 0xA1;
-        map[0x94] = 0x00;
-        map[0x95] = 0x00;
-        map[0x96] = 0x00;
-        map[0x97] = 0x00;
-        map[0xA8] = 0x00;
-        map[0x47] = 0x00;
-        map[0x0C] = 0x00;
-        map[0xFA] = 0x00;
         return map[beo4_code];
     }
 
@@ -206,9 +192,31 @@ class PC2 {
     PC2Mixer *mixer;
     AMQP *amqp;
     uint8_t active_source = 0;
+    std::map<uint8_t, std::string> source_name;
+    std::time_t last_light_timestamp = 0;
 
     public:
     PC2() {
+        this->source_name[0x0B] = "TV";
+        this->source_name[0x15] = "V_MEM";
+        this->source_name[0x15] = "V_TAPE";
+        this->source_name[0x16] = "DVD_2";
+        this->source_name[0x16] = "V_TAPE2";
+        this->source_name[0x1F] = "SAT";
+        this->source_name[0x1F] = "DTV";
+        this->source_name[0x29] = "DVD";
+        this->source_name[0x33] = "DTV_2";
+        this->source_name[0x33] = "V_AUX";
+        this->source_name[0x3E] = "V_AUX2";
+        this->source_name[0x3E] = "DOORCAM";
+        this->source_name[0x47] = "PC";
+        this->source_name[0x6F] = "RADIO";
+        this->source_name[0x79] = "A_MEM";
+        this->source_name[0x7A] = "A_MEM2";
+        this->source_name[0x8D] = "CD";
+        this->source_name[0x97] = "A_AUX";
+        this->source_name[0xA1] = "N_RADIO";
+
         this->device = new PC2USBDevice;        
         this->mixer = new PC2Mixer(this->device);
         this->amqp = new AMQP;
@@ -269,6 +277,7 @@ class PC2 {
         std::map<uint8_t, uint8_t> tgram_len_map;
         tgram_len_map[0x04] = 0x0e;
         tgram_len_map[0x10] = 0x0e;
+        tgram_len_map[0x40] = 0x16;
 
         printf("| Telegram to %s from %s: \n", node_map[tgram[3]].c_str(), node_map[tgram[4]].c_str()); 
         switch(tgram[10]) {
@@ -279,7 +288,7 @@ class PC2 {
                 printf("| Active source is: 0x%02X.\n", tgram[13]);
                 break;
             case(0x10):
-                if(!memcmp("\x10\x03\x03\x01\x00\x01", (void *)tgram.data() + 10, 6)) {
+                if(!memcmp("\x10\x03\x03\x01\x00\x01", (void *)(tgram.data() + 10), 6)) {
                     printf("| Beosystem 3 is requesting audio control back. Relinquishing...\n");
                     this->mixer->transmit(false);
                 }
@@ -295,30 +304,55 @@ class PC2 {
     };
 
     void send_beo4_code(uint8_t dest, uint8_t code) {
-        this->device->send_telegram({0x60, 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00, 0x61});
+        this->device->send_telegram({0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00});
     };
+
+    void process_beo4_keycode(uint8_t keycode) {
+        printf("Got remote control code %02x\n", keycode);
+        if(Beo4::is_source_key(keycode)) {
+            printf("Active source change\n");
+            if(keycode == 0x91) { // A. MEM
+                if(this->active_source != Beo4::source_from_keycode(keycode))
+                    send_audio();
+                printf("no need to send audio\n");
+            }
+            this->active_source = Beo4::source_from_keycode(keycode);
+            this->amqp->set_active_source(this->active_source);
+        } else {
+            // LIGHT key has been pressed; we're now in LIGHT mode for about 25 seconds
+            // or until it is explicitly cancelled by the remote with 0x58.
+            if(keycode == 0x9b) {
+                this->last_light_timestamp = std::time(nullptr);
+                printf("Entering LIGHT mode...\n");
+            }
+            // LIGHT mode has been explicitly cancelled
+            if(keycode == 0x58) {
+                this->last_light_timestamp = 0;
+                printf("Leaving LIGHT mode...\n");
+            }
+            // If a LIGHT command has not yet timed out
+            if(std::time(nullptr) <= (this->last_light_timestamp + 25)) {
+                char *hexmsg = (char *)malloc(3);
+                sprintf(hexmsg, "%02X", keycode);
+                this->amqp->send_message("LIGHT", hexmsg);
+                free(hexmsg);
+            } else {
+                if(this->active_source) {
+                    char *hexmsg = (char *)malloc(3);
+                    sprintf(hexmsg, "%02X", keycode);
+                    this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
+                    free(hexmsg);
+                }
+            }
+        }
+    }
 
     void process_telegram(PC2Telegram & tgram) {
         if(tgram[2] == 0x00) {
             process_ml_telegram(tgram);
         }
         if(tgram[2] == 0x02) {
-            if(Beo4::is_source_key(tgram[6])) {
-                printf("Active source change\n");
-                if(tgram[6] == 0x91) {
-                    printf("%02x, %02x\n", this->active_source, Beo4::source_from_keycode(tgram[6]));
-                    if(this->active_source != Beo4::source_from_keycode(tgram[6]))
-                        send_audio();
-                    printf("no need to send audio\n");
-                }
-                this->active_source = Beo4::source_from_keycode(tgram[6]);
-                this->amqp->set_active_source(this->active_source);
-            }
-            printf("Got remote control code %02x\n", tgram[6]);
-            char *hexmsg = (char *)malloc(3);
-            sprintf(hexmsg, "%02X", tgram[6]);
-            this->amqp->send_message(hexmsg);
-            free(hexmsg);
+            process_beo4_keycode(tgram[6]);
         }
     }
 
@@ -326,6 +360,7 @@ class PC2 {
         PC2Telegram telegram;
         this->device->send_telegram({0xfa, 0x38, 0xf0, 0x88, 0x40, 0x00, 0x00});
         telegram = this->device->get_data();
+        // This is a source status (V. MASTER also sends a 0x87 telegram.) Why is it sending source 0x7A (A.MEM2)?
         this->device->send_telegram({0xe0,0x83,0xc1,0x01,0x14,0x00,0x7a,0x00,0x87,0x1e,0x04,0x7a,0x02,0x00,0x00,0x40, \
                 0x28,0x01,0x00,0x00,0x00,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, \
                 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x62,0x00,0x00});

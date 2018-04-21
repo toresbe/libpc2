@@ -15,7 +15,7 @@ class AMQP {
         uint8_t active_source = 0;
     public:
         void set_active_source(uint8_t source_id);
-        void send_message(char *messagebody);
+        void send_message(const char *source_name, const char *messagebody);
         AMQP(char *hostname = (char *)"localhost", int port = 5672);
         ~AMQP();
 };

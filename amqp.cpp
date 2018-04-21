@@ -108,10 +108,10 @@ void AMQP::set_active_source(uint8_t source_id) {
     free(messagebody);
 }
 
-void AMQP::send_message(char *messagebody) {
+void AMQP::send_message(const char *source_name, const char *messagebody) {
     char const *exchange = "PC2";
-    char *routingkey = (char *)malloc(8);
-    sprintf(routingkey, "Beo4.%02X", this->active_source);
+    char *routingkey = (char *)malloc(30);
+    sprintf(routingkey, "%s.Beo4", source_name);
     {
         amqp_basic_properties_t props;
         props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
@@ -122,6 +122,7 @@ void AMQP::send_message(char *messagebody) {
                     &props, amqp_cstring_bytes(messagebody)),
                 "Publishing");
     }
+    free(routingkey);
 }
 
 AMQP::~AMQP() {
