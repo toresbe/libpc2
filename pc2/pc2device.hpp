@@ -1,11 +1,11 @@
 #ifndef __PC2DEVICE_HPP
 #define __PC2DEVICE_HPP
 
-#include "pc2/pc2.hpp"
 #include <vector>
 #include <exception>
 #include <libusb-1.0/libusb.h>
-
+typedef std::vector<uint8_t> PC2Message;
+typedef std::vector<uint8_t> PC2Telegram; // a PC2 message with the start, num_bytes and end bytes
 class PC2USBDevice {
 	libusb_context *usb_ctx;
 	libusb_device *pc2_dev;

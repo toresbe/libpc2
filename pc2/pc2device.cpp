@@ -1,7 +1,9 @@
-// USB-relevant code for the 
+// Code for the PC2 USB device
 #include "pc2/pc2device.hpp"
 
 #include <boost/log/trivial.hpp>
+
+
 #define VENDOR_ID 0x0cd4
 #define PRODUCT_ID 0x0101	
 class eDeviceNotFound : public std::exception { virtual const char* what() const throw() { return "PC2 not found"; } } eDeviceNotFound;

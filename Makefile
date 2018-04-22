@@ -6,7 +6,7 @@ LDFLAGS=-g
 LDLIBS=/usr/lib/i386-linux-gnu/libboost_log.a $(shell pkg-config --libs libusb-1.0) -lrabbitmq -lboost_iostreams -lboost_thread -lboost_system -lpthread -lboost_log
 
 PROG=pc2d
-SRCS=$(wildcard pc2/*.cpp) $(wildcard amqp/*.cpp)
+SRCS=$(wildcard pc2/*.cpp) $(wildcard amqp/*.cpp) $(wildcard ml/*.cpp)
 OBJS=$(subst .cpp,.o,$(SRCS))
 
 all:            $(PROG)
