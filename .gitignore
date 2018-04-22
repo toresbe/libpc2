@@ -23,7 +23,6 @@ moc_*.cpp
 moc_*.h
 qrc_*.cpp
 ui_*.h
-Makefile*
 *build-*
 
 # QtCreator
@@ -38,7 +37,9 @@ Makefile*
 CMakeLists.txt.user*
 
 #Final binary
-pc2
+/pc2d
 
 # Vim tmp files
 *.swp
+
+.vs
