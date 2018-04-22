@@ -2,6 +2,7 @@
 #include "pc2/pc2device.hpp"
 
 #include <boost/log/trivial.hpp>
+#include <boost/format.hpp>
 
 
 #define VENDOR_ID 0x0cd4
@@ -82,11 +83,14 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 	telegram.insert(telegram.end(), message.begin(), message.end());
 	// end of transmission 
 	telegram.push_back(0x61);
-	printf("Debug: sending telegram ");
+	std::string debug_message = "Sent:";
+	
 	for (auto &x : telegram) {
-		printf("%02X ", x);
+		debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
 	}
-	printf("\n");
+
+	BOOST_LOG_TRIVIAL(debug) << debug_message;
+
 	int actual_length;
 	int r = libusb_interrupt_transfer(this->pc2, 0x01, (unsigned char *)telegram.data(), telegram.size(), &actual_length, 0);
 	assert(r == 0);
@@ -95,6 +99,8 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 }
 
 PC2Telegram PC2USBDevice::get_data(int timeout) {
+	// in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
+	// so FIXME: prepare for that eventuality!
 	uint8_t buffer[512];
 	PC2Message msg;
 	int i = 0;
@@ -103,7 +109,7 @@ PC2Telegram PC2USBDevice::get_data(int timeout) {
 	while (!eot) {
 		int r = libusb_interrupt_transfer(this->pc2, 0x81, buffer, 512, &actual_length, timeout);
 		if (r == LIBUSB_ERROR_TIMEOUT) {
-			printf("Hit a timeout\n");
+			BOOST_LOG_TRIVIAL(info) << "Timed out waiting for message";
 			return msg;
 		}
 		assert(r == 0);
@@ -115,10 +121,12 @@ PC2Telegram PC2USBDevice::get_data(int timeout) {
 			timeout = 1000;
 		}
 	}
-	printf("Got %.2d bytes:", msg.size());
-	for (auto c : msg) {
-		printf(" %02X", c);
+
+	std::string debug_message = " Got:";
+	for (auto &x : msg) {
+		debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
 	}
-	printf(".\n");
+	BOOST_LOG_TRIVIAL(debug) << debug_message;
+
 	return msg;
 }

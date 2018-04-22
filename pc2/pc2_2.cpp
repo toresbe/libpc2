@@ -50,16 +50,18 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 	case(0x04):
 	{
 		// Some sort of audio setup
-		// Is this coming from a link product?
-		if (tgram[4] <= 0x40) {
-			uint8_t requesting_node = tgram[4];
-			if ((tgram[11] == 0x03) && (tgram[12] == 0x04) && (tgram[13] == 0x08) && (tgram[14] == 0x01) && (tgram[15] == 0x00)) {
+		uint8_t requesting_node = tgram[4];
+		if ((tgram[11] == 0x03) && (tgram[12] == 0x04) && (tgram[14] == 0x01) && (tgram[15] == 0x00)) {
+			if (tgram[13] == 0x08) {
 				BOOST_LOG_TRIVIAL(info) << "Link device ping, sending pong";
-				this->device->send_telegram({ 0xe0, requesting_node, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x01, 0xe9, 0x00 });
-				expect_ack();
-				this->mixer->transmit(true);
-				this->mixer->set_parameters(0x22, 0, 0, 0);
 			}
+			else if (tgram[13] == 0x02) {
+				BOOST_LOG_TRIVIAL(info) << "Video device ping? Sending pong";
+			}
+			this->device->send_telegram({ 0xe0, requesting_node, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x01, 0xe9, 0x00 });
+			expect_ack();
+			//this->mixer->transmit(true);
+			//this->mixer->set_parameters(0x22, 0, 0, 0);
 		}
 	}
 	break;

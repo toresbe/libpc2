@@ -105,6 +105,7 @@ void PC2::send_beo4_code(uint8_t dest, uint8_t code) {
 
 void PC2::process_beo4_keycode(uint8_t keycode) {
 	printf("Got remote control code %02x\n", keycode);
+
 	if (Beo4::is_source_key(keycode)) {
 		printf("Active source change\n");
 		if (keycode == 0x91) { // A. MEM
@@ -158,10 +159,12 @@ void PC2::process_telegram(PC2Telegram & tgram) {
 
 void PC2::expect_ack() {
 	PC2Telegram telegram = this->device->get_data(500);
-	if (memcmp("\x60\x04\x41\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
-		if (memcmp("\x60\x04\x01\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
-			printf("Expected an ACK but did not find one!\n");
-			process_telegram(telegram);
+	if (telegram.size() >= 7) {
+		if (memcmp("\x60\x04\x41\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
+			if (memcmp("\x60\x04\x01\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
+				printf("Expected an ACK but did not find one!\n");
+				process_telegram(telegram);
+			}
 		}
 	}
 }
@@ -171,10 +174,12 @@ void PC2::send_audio() {
 	this->device->send_telegram({ 0xfa, 0x38, 0xf0, 0x88, 0x40, 0x00, 0x00 });
 	telegram = this->device->get_data();
 	// This is a source status (V. MASTER also sends a 0x87 telegram.) Why is it sending source 0x7A (A.MEM2)?
+	BOOST_LOG_TRIVIAL(debug) << "Sending source status";
 	this->device->send_telegram({ 0xe0,0x83,0xc1,0x01,0x14,0x00,0x7a,0x00,0x87,0x1e,0x04,0x7a,0x02,0x00,0x00,0x40, \
 			0x28,0x01,0x00,0x00,0x00,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, \
 			0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x62,0x00,0x00 });
-	telegram = this->device->get_data(); // expect an ACK
+	expect_ack();
+	BOOST_LOG_TRIVIAL(debug) << "Pinging Beosystem 3";
 	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x01,0x01,0xa4,0x00 });
 	telegram = this->device->get_data(); // expect an ACK
 	telegram = this->device->get_data(); // expect reply from V MASTER
@@ -229,6 +234,7 @@ PC2::~PC2() {
 	yield();
 }
 
+//void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
 	yield();
 	yield();
@@ -260,10 +266,12 @@ void PC2::init() {
 
 	yield();
 	this->device->send_telegram({ 0x26 });
-	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 }); 
+	// Check if a video master is present?
+	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 });
 	expect_ack();
+	yield();
+	// Some sort of status message or alive message, addressed at video master
 	this->device->send_telegram({ 0xe0,0xc0,0x01,0x01,0x0b,0x00,0x00,0x00,0x04,0x01,0x17,0x01,0xea,0x00 });
-	expect_ack();
 	yield();
 	this->device->send_telegram({ 0xf9, 0x80 });
 
