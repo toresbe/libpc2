@@ -25,4 +25,6 @@ install: pc2d
 	install -m 644 services/pc2_hue.service /etc/systemd/system/
 	install -m 644 services/pc2_projector.service /etc/systemd/system/
 	install -m 755 pc2d /usr/local/bin
+	install -m 755 services/pc2_hue /usr/local/bin
+	install -m 755 services/pc2_projector /usr/local/bin
 	install -m 644 etc/50-pc2.rules /etc/udev/rules.d

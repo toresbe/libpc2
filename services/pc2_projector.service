@@ -5,8 +5,8 @@ After=syslog.target network.target pc2.service
 [Service]
 Type=simple
 User=toresbe
-WorkingDirectory=/home/toresbe/pc2_local/services/env/
-ExecStart=/home/toresbe/pc2_local/services/env/bin/python /home/toresbe/pc2_local/services/pc2_projector.py
+WorkingDirectory=/home/toresbe
+ExecStart=/usr/local/bin/pc2_projector
 Restart=on-abort
 
 [Install]

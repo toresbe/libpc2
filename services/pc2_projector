@@ -1,3 +1,4 @@
+#!/usr/bin/env
 import serial
 import time
 import pika
