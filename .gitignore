@@ -43,3 +43,7 @@ CMakeLists.txt.user*
 *.swp
 
 .vs
+
+env/
+
+
