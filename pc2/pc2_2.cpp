@@ -11,9 +11,6 @@
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 
-
-
-
 void PC2::process_ml_telegram(PC2Telegram & tgram) {
 	std::map<uint8_t, std::string> node_map;
 	node_map[0x80] = "ALL";
@@ -71,6 +68,9 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 			BOOST_LOG_TRIVIAL(info) << boost::format("Node #%02X sent one of those 0x08 requests we don't know what are yet") % (unsigned int)tgram[4];
 			// Not sure what this means but link room products will sometimes need this reply
 			this->device->send_telegram({ 0xe0, tgram[4], 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00, 0x04, 0xe4, 0x00 });
+			//							A casting AM will yield this reply in stead
+            //         			         '0xe0, 0xc0,     0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x08, 0x04, 0x06, 0x02, 0x01, 0x00, 0x79, 0x24, 0x00'
+
 			expect_ack();
 		}
 		else {
@@ -109,6 +109,13 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 	break;
 	case(0x40):
 		printf("| Time is: %02X:%02X:%02X on 20%02X-%02X-%02X.\n", tgram[16], tgram[17], tgram[18], tgram[22], tgram[21], tgram[20]);
+		break;
+	case(0x44):
+		// So, I don't know what this telegram type actually means yet or how to decode it, however I have observed it in 
+		// contexts where audio bus ownership is handed from one device to another. Erring on the side of caution I've decided 
+		// to just cut the feed if this should ever occur (it's not in any "supported" configuration for this code).
+		BOOST_LOG_TRIVIAL(warning) << "Disabling audio output because we got a 0x44 telegram and I don't know what that means (see code)";
+		this->mixer->transmit(false);
 		break;
 	case(0x45):
 	{

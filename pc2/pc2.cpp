@@ -115,8 +115,14 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
 				printf("Active source is %02X, new is %02X; no need to send audio\n", this->active_source, Beo4::source_from_keycode(keycode));
 			}
 		}
+
 		this->active_source = Beo4::source_from_keycode(keycode);
 		this->amqp->set_active_source(this->active_source);
+
+		char *hexmsg = (char *)malloc(3);
+		sprintf(hexmsg, "%02X", keycode);
+		this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
+		free(hexmsg);
 	}
 	else {
 		// LIGHT key has been pressed; we're now in LIGHT mode for about 25 seconds
