@@ -19,3 +19,8 @@ clean:
 
 distclean: clean
 	$(RM) pc2
+
+install: pc2.service
+	install -m 644 pc2.service /etc/systemd/system/
+	install -m 644 services/pc2_hue.service /etc/systemd/system/
+	install -m 755 pc2d /usr/local/bin
