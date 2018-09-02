@@ -1,0 +1,13 @@
+[Unit]
+Description=PC2 Hue
+After=syslog.target network.target pc2.service
+
+[Service]
+Type=simple
+User=toresbe
+WorkingDirectory=/home/toresbe/pc2_local/services/env/
+ExecStart=/home/toresbe/pc2_local/services/env/bin/python /home/toresbe/pc2_local/services/pc2_hue.py
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target
