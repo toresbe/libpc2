@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 import serial
 import time
 import pika
@@ -7,6 +7,8 @@ import pika
 #print source_dict
 
 # client id 7bccff4775434d40bb3ad1b96255f2cf
+#
+print('Starting up...')
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
