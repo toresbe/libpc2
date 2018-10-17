@@ -12,6 +12,8 @@ huebridge = phue.Bridge('philips-hue', username=username)
 hue_groups = huebridge.get_group()
 print hue_groups
 
+print(huebridge.get_light_objects('name')['Hue lightstrip plus 1'])
+
 light_source = False
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
@@ -52,6 +54,16 @@ def callback(ch, method, properties, body):
             huebridge.run_scene("Living room", "Dimmed")
         if body == "03":
             huebridge.run_scene("Living room", "TV")
+        if body == "1E":
+            for light in huebridge.get_group('Living room')['lights']:
+                light = int(light)
+                bri = huebridge.get_light(light, 'bri')
+                huebridge.set_light(light, 'bri', bri + 30)
+        if body == "1F":
+            for light in huebridge.get_group('Living room')['lights']:
+                light = int(light)
+                bri = huebridge.get_light(light, 'bri')
+                huebridge.set_light(light, 'bri', bri - 30)
         pass
 
 
