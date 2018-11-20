@@ -165,8 +165,9 @@ void PC2::send_beo4_code(uint8_t dest, uint8_t code) {
 	this->device->send_telegram({ 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00 });
 };
 
+#include <iomanip>
 void PC2::process_beo4_keycode(uint8_t keycode) {
-	printf("Got remote control code %02x\n", keycode);
+    BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
 
 	if (Beo4::is_source_key(keycode)) {
 		printf("Active source change\n");
@@ -347,7 +348,7 @@ PC2::~PC2() {
 
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
-	//this->device->send_telegram({ 0xf1 }); // Send initialization command.
+	this->device->send_telegram({ 0xf1 }); // Send initialization command.
 	//this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
         //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
         //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 
