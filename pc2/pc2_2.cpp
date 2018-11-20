@@ -81,7 +81,7 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 	case(0x10):
 		if (!memcmp("\x10\x03\x03\x01\x00\x01", (void *)(tgram.data() + 10), 6)) {
 			BOOST_LOG_TRIVIAL(info) << "Video master is requesting audio control back. Relinquishing...";
-			this->mixer->transmit(false);
+			this->mixer->ml_distribute(false);
 		}
 		break;
 	case(0x11):
@@ -115,7 +115,7 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 		// contexts where audio bus ownership is handed from one device to another. Erring on the side of caution I've decided 
 		// to just cut the feed if this should ever occur (it's not in any "supported" configuration for this code).
 		BOOST_LOG_TRIVIAL(warning) << "Disabling audio output because we got a 0x44 telegram and I don't know what that means (see code)";
-		this->mixer->transmit(false);
+		this->mixer->ml_distribute(false);
 		break;
 	case(0x45):
 	{
@@ -123,8 +123,8 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 		uint8_t requesting_node = tgram[4];
 		BOOST_LOG_TRIVIAL(info) << boost::format("Source %02X requested by node #%02X") % (unsigned int)source_num % (unsigned int)requesting_node;
 		this->listener_count++;
-		this->mixer->transmit(true);
-		this->mixer->set_parameters(0x22, 0, 0, 0);
+		this->mixer->ml_distribute(true);
+		this->mixer->set_parameters(0x22, 0, 0, 0, false);
 		this->device->send_telegram({ 0xe0, 0x83, 0xc1, 0x01, 0x14, 0x00, source_num, 0x00, 0x87, 0x1f, 0x04, source_num, 0x01, 0x00, 0x00, 0x1f, 0xbe, 0x01, 0x00, 0x00, 0x00, 0xff, 0x02, 0x01, 0x00, 0x03, 0x01, 0x01, 0x01, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe2, 0x00 });
 		expect_ack();
 		this->device->send_telegram({ 0xe0, requesting_node, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x08, 0x05, 0x02, source_num, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0xaa, 0x00 });

@@ -11,10 +11,29 @@
 
 class PC2Mixer {
 	PC2USBDevice *device;
+        struct state {
+            short unsigned int volume;
+            short int bass;
+            short int treble;
+            short int balance;
+            bool loudness;
+            bool headphones_plugged_in;
+            bool transmitting_locally;
+            bool distributing_on_ml;
+            bool speakers_muted;
+            bool speakers_on;
+        } state;
+        void send_routing_state();
 public:
 	PC2Mixer(PC2USBDevice *device);
-	void transmit(bool transmit_enabled);
-	void set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance);
+        void adjust_volume(int adjustment);
+	void ml_distribute(bool transmit_enabled);
+	void transmit_locally(bool transmit_enabled);
+        void speaker_mute(bool speakers_muted);
+        void speaker_power(bool spakers_powered);
+        void process_mixer_state(PC2Telegram & tgram);
+        void process_headphone_state(PC2Telegram & tgram);
+	void set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness);
 };
 
 class PC2 {
@@ -29,6 +48,7 @@ class PC2 {
 public:
 	PC2();
 	void yield();
+	void yield(std::string description);
 	void set_address_filter();
 	void broadcast_timestamp();
 	~PC2();

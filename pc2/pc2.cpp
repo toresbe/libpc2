@@ -1,5 +1,6 @@
 #include <cstdio>
 
+#include <iostream>
 #include <string>
 #include <boost/log/trivial.hpp>
 #include <vector>
@@ -13,21 +14,76 @@ PC2Mixer::PC2Mixer(PC2USBDevice *device) {
 	this->device = device;
 }
 
-void PC2Mixer::transmit(bool transmit_enabled) {
-	if (transmit_enabled == true) {
-		this->device->send_telegram({ 0xe7, 0x00 });
-		this->device->send_telegram({ 0xe5, 0x00, 0x01, 0x00, 0x00 });
-	}
-	else {
-		this->device->send_telegram({ 0xe5, 0x00, 0x00, 0x00, 0x01 });
-		this->device->send_telegram({ 0xe7, 0x01 });
-	}
-};
-
-void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance) {
-	this->device->send_telegram({ 0xe3, volume, treble, bass, balance });
+void PC2Mixer::speaker_mute(bool is_muted) {
+    uint8_t mute_command = is_muted ? 0x80 : 0x81;
+    this->device->send_telegram({ 0xea, mute_command });
+    this->state.speakers_muted = is_muted;
 }
 
+void PC2Mixer::speaker_power(bool is_powered) {
+    uint8_t power_command = is_powered ? 0xFF : 0x00;
+
+    if (is_powered) {
+        this->device->send_telegram({ 0xea, power_command });
+        this->speaker_mute(false);
+    } else {
+        this->speaker_mute(true);
+        this->device->send_telegram({ 0xea, power_command });
+    }
+
+    this->state.speakers_on = is_powered;
+}
+
+void PC2Mixer::adjust_volume(int adjustment) {
+    if (!adjustment) return;
+
+    int increment = (adjustment > 0) ? 1 : -1;
+
+    for(int i = 0; adjustment != i; i += increment) {
+        BOOST_LOG_TRIVIAL(info) << "adjusting volume";
+        this->device->send_telegram({ 0xeb, \
+                (adjustment > 0) ? (uint8_t)0x80 : (uint8_t)0x81});
+    }
+}
+
+void PC2Mixer::send_routing_state() {
+    uint8_t muted = 0x00;
+
+    if(! (this->state.distributing_on_ml || this->state.transmitting_locally)) 
+        muted = 0x01;
+    
+    uint8_t distribute = this->state.distributing_on_ml ? 0x01 : 0x00;
+    uint8_t locally = this->state.transmitting_locally ? 0x01 : 0x00;
+
+    this->device->send_telegram({ 0xe7, muted });
+    this->device->send_telegram({ 0xe5, locally, distribute, 0x00, muted });
+}
+
+void PC2Mixer::transmit_locally(bool transmit_enabled) {
+    if (this->state.transmitting_locally != transmit_enabled) {
+        BOOST_LOG_TRIVIAL(info) << "Setting local output";
+        this->state.transmitting_locally = transmit_enabled;
+        this->send_routing_state();
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "Local output already in requested state";
+    }
+};
+
+void PC2Mixer::ml_distribute(bool transmit_enabled) {
+    if (this->state.distributing_on_ml != transmit_enabled) {
+        BOOST_LOG_TRIVIAL(info) << "Setting ML distribution";
+        this->state.distributing_on_ml = transmit_enabled;
+        this->send_routing_state();
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "ML distribution already in requested state";
+    }
+};
+
+void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness) {
+    uint8_t vol_byte = volume | loudness ? 0x80 : 0x00;
+
+    this->device->send_telegram({ 0xe3, vol_byte, bass, treble, balance });
+}
 
 class Beo4 {
 public:
@@ -83,7 +139,13 @@ PC2::PC2() {
 
 	this->device = new PC2USBDevice;
 	this->mixer = new PC2Mixer(this->device);
-	this->amqp = new AMQP;
+//	this->amqp = new AMQP;
+}
+
+void PC2::yield(std::string description) {
+	auto foo = this->device->get_data(200);
+	BOOST_LOG_TRIVIAL(debug) << "(was expecting packet: " << description << ")";
+	if (foo.size()) process_telegram(foo);
 }
 
 void PC2::yield() {
@@ -125,6 +187,14 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
 		free(hexmsg);
 	}
 	else {
+                // Volume up
+		if (keycode == 0x60) {
+                    this->mixer->adjust_volume(1);
+                }
+                // Volume down
+		if (keycode == 0x64) {
+                    this->mixer->adjust_volume(-1);
+                }
 		// LIGHT key has been pressed; we're now in LIGHT mode for about 25 seconds
 		// or until it is explicitly cancelled by the remote with 0x58.
 		if (keycode == 0x9b) {
@@ -153,6 +223,25 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
 		}
 	}
 }
+void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
+    this->state.volume = tgram[3] & 0x7f;
+    this->state.loudness = tgram[3] & 0x80;
+    this->state.bass = (int8_t)tgram[4];
+    this->state.treble = (int8_t)tgram[5];
+    this->state.balance = (int8_t)tgram[6];
+    BOOST_LOG_TRIVIAL(debug) << "Got mixer state from PC2:" << \
+        " vol:" << this->state.volume << \
+        " bass:" << this->state.bass << \
+        " trbl:" << this->state.treble << \
+        " bal:" << this->state.balance << \
+        " ldns: " << (this->state.loudness ? "on" : "off");
+};
+
+void PC2Mixer::process_headphone_state(PC2Telegram & tgram) {
+    bool plugged_in = (tgram[3] == 0x01) ? true: false;
+    this->state.headphones_plugged_in = plugged_in;
+    BOOST_LOG_TRIVIAL(debug) << "Headphones are " << (plugged_in ? "" : "not ") << "plugged in";
+};
 
 void PC2::process_telegram(PC2Telegram & tgram) {
 	if (tgram[2] == 0x00) {
@@ -161,18 +250,30 @@ void PC2::process_telegram(PC2Telegram & tgram) {
 	if (tgram[2] == 0x02) {
 		process_beo4_keycode(tgram[6]);
 	}
+        if (tgram[2] == 0x03) {
+            // PC2 device sending mixer state
+            this->mixer->process_mixer_state(tgram);
+        }
+        if (tgram[2] == 0x06) {
+            this->mixer->process_headphone_state(tgram);
+        }
 }
 
 void PC2::expect_ack() {
-	PC2Telegram telegram = this->device->get_data(500);
-	if (telegram.size() >= 7) {
-		if (memcmp("\x60\x04\x41\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
-			if (memcmp("\x60\x04\x01\x01\x01\x01\x61", (void *)telegram.data(), 7)) {
-				printf("Expected an ACK but did not find one!\n");
-				process_telegram(telegram);
-			}
-		}
-	}
+    PC2Telegram telegram = this->device->get_data(500);
+
+    if (telegram[1] == 0x04) {
+        if ((telegram[2] == 0x01) | (telegram[2] == 0x41)) {
+            BOOST_LOG_TRIVIAL(debug) << " Got ACK.";
+            if(telegram[5] != 0x01) {
+                BOOST_LOG_TRIVIAL(warning) << "Masterlink not working.";
+            }
+
+        }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "Expected an ACK but did not get one!";
+        process_telegram(telegram);
+    }
 }
 
 void PC2::send_audio() {
@@ -200,8 +301,8 @@ void PC2::send_audio() {
 	telegram = this->device->get_data(); // not sure what this is
 	this->device->send_telegram({ 0xfa, 0x30, 0xd0, 0x65, 0x80, 0x6c, 0x22 });
 	this->device->send_telegram({ 0xf9, 0x64 });
-	this->mixer->set_parameters(0x22, 0, 0, 0);
-	this->mixer->transmit(true);
+	this->mixer->set_parameters(0x22, 0, 0, 0, false);
+	this->mixer->ml_distribute(true);
 	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x44,0x08,0x05,0x02,0x79,0x00,0x02,0x01,0x00,0x00,0x00,0x65,0x00 });
 	telegram = this->device->get_data(); // expect an ACK
 	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x14,0x00,0x00,0x00,0x82,0x0a,0x01,0x06,0x79,0x00,0x02,0x00,0x00,0x00,0x00,0x00,0x01,0xa5,0x00 });
@@ -230,7 +331,11 @@ void PC2::broadcast_timestamp() {
 	if (std::strftime(mbstr, sizeof(mbstr), "%H%M%S%d%m%y", std::localtime(&t))) {
 		std::sscanf(mbstr, "%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX", &hour, &minute, &seconds, &day, &month, &year);
 	}
-	this->device->send_telegram({ 0xe0, 0x80, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x40, 0x0b, 0x0b, 0x0a, 0x00, 0x03, hour, minute, seconds, 0x00, day, month, year, 0x02, 0x76, 0x00 });
+	this->device->send_telegram({ 0xe0, 0x80, 0xc1, 0x01, 0x14, 0x00, \
+                                      0x00, 0x00, 0x40, 0x0b, 0x0b, 0x0a, \
+                                      0x00, 0x03, hour, minute, seconds,  \
+                                      0x00, day, month, year, 0x02, 0x76, \
+                                      0x00 });
 	this->expect_ack();
 }
 
@@ -242,44 +347,40 @@ PC2::~PC2() {
 
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
-	yield();
-	yield();
-	yield();
-	this->device->send_telegram({ 0xf1 });
-	this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
-													   // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
-	expect_ack();
-	// then another ACK-ish message (60 05 49 02 36 01 04 61); then another (60 02 0A 01 61).
-	yield();
-	yield();
-	this->device->send_telegram({ 0x29 }); // Don't know what this does.
-										   // sends an ACK-ish message (60 05 49 02 36 01 04 61); then another (60 02 0A 01 61).
-	yield();
-	yield();
-	set_address_filter();
-	this->device->send_telegram({ 0xe0, 0x83, 0xc2, 0x01, 0x14, 0x00, 0x47, 0x00, \
-								  0x87, 0x1f, 0x04, 0x47, 0x01, 0x00, 0x00, 0x1f, \
-								  0xbe, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x01, \
-		                          0x00, 0x03, 0x01, 0x01, 0x01, 0x03, 0x00, 0x02, \
-		                          0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, \
-		                          0x00, 0x00, 0x7d, 0x00 });
-	yield();
-	yield();
-	broadcast_timestamp();
-	yield();
-	yield();
-	this->mixer->transmit(false);
+	//this->device->send_telegram({ 0xf1 }); // Send initialization command.
+	//this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
+        //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
+        //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 
+        //                                            // then another (60 02 0A 01 61, probably some escape character for a list).
+	//expect_ack();
+	//yield("Software version");
+	//this->mixer->transmit_locally(true);
+        //this->mixer->speaker_power(true);
+//	this->device->send_telegram({ 0x29 }); // Requests software version?
+                                               // sends an ACK-ish message (60 05 49 02 36 01 04 61); then another (60 02 0A 01 61).
+//	set_address_filter();
+	/*this->device->send_telegram({ 0xe0, 0x83, 0xc2, 0x01, 0x14, 0x00, 0x47, 0x00, \
+	//							  0x87, 0x1f, 0x04, 0x47, 0x01, 0x00, 0x00, 0x1f, \
+	//							  0xbe, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x01, \
+	//	                          0x00, 0x03, 0x01, 0x01, 0x01, 0x03, 0x00, 0x02, \
+	//	                          0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, \
+	//	                          0x00, 0x00, 0x7d, 0x00 }); */
+	//yield();
+	//yield();
+	//broadcast_timestamp();
+	//yield();
+	//yield();
+	//this->mixer->ml_distribute(false);
 
-	yield();
-	this->device->send_telegram({ 0x26 });
-	// Check if a video master is present?
-	this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 });
-	expect_ack();
-	yield();
-	// Some sort of status message or alive message, addressed at video master
-	this->device->send_telegram({ 0xe0,0xc0,0x01,0x01,0x0b,0x00,0x00,0x00,0x04,0x01,0x17,0x01,0xea,0x00 });
-	yield();
-	this->device->send_telegram({ 0xf9, 0x80 });
+	this->device->send_telegram({ 0x26 }); // get status info (PC2 will send a 06 00/01 to say if HP are in)
+	//// Check if a video master is present?
+	//this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 });
+	//expect_ack();
+	//yield();
+	//// Some sort of status message or alive message, addressed at video master
+	//this->device->send_telegram({ 0xe0,0xc0,0x01,0x01,0x0b,0x00,0x00,0x00,0x04,0x01,0x17,0x01,0xea,0x00 });
+	//yield();
+	//this->device->send_telegram({ 0xf9, 0x80 });
 
 	//        send_beo4_code(0xc0, 0x91);
 }
