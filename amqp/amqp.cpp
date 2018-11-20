@@ -78,7 +78,7 @@ AMQP::AMQP(char *hostname, int port) {
 
 	status = amqp_socket_open(this->socket, hostname, port);
 	if (status) {
-		die("opening TCP socket");
+		die("Failed to open TCP socket to amqpd");
 	}
 
 	die_on_amqp_error(amqp_login(this->conn, "/", 0, 131072, 0, AMQP_SASL_METHOD_PLAIN, "guest", "guest"), "Logging in");
