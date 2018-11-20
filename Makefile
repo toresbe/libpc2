@@ -1,9 +1,9 @@
 CC=cc
 CXX=g++
 RM=rm -f
-CPPFLAGS=-g -fPIC -std=gnu++11 -Wall -Wextra -I. $(shell pkg-config --cflags libusb-1.0)
+CPPFLAGS=-g -fPIC -std=gnu++11 -Wall -Wextra -I. -DBOOST_LOG_DYN_LINK $(shell pkg-config --cflags libusb-1.0)
 LDFLAGS=-g
-LDLIBS=/usr/lib/i386-linux-gnu/libboost_log.a $(shell pkg-config --libs libusb-1.0) -lrabbitmq -lboost_iostreams -lboost_thread -lboost_system -lpthread -lboost_log
+LDLIBS=$(shell pkg-config --libs libusb-1.0) -lrabbitmq -lboost_iostreams -lboost_thread -lboost_system -lpthread -lboost_log_setup -lboost_log
 
 PROG=pc2d
 SRCS=$(wildcard pc2/*.cpp) $(wildcard amqp/*.cpp) $(wildcard ml/*.cpp)
