@@ -109,7 +109,7 @@ PC2Telegram PC2USBDevice::get_data(int timeout) {
 	while (!eot) {
 		int r = libusb_interrupt_transfer(this->pc2, 0x81, buffer, 512, &actual_length, timeout);
 		if (r == LIBUSB_ERROR_TIMEOUT) {
-			BOOST_LOG_TRIVIAL(info) << "Timed out waiting for message";
+			//BOOST_LOG_TRIVIAL(info) << "Timed out waiting for message";
 			return msg;
 		}
 		assert(r == 0);

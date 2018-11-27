@@ -1,4 +1,6 @@
+#include <signal.h>
 #include <cstdio>
+#include <iomanip>
 
 #include <iostream>
 #include <string>
@@ -9,6 +11,11 @@
 #include "amqp/amqp.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
+static volatile bool keepRunning = 1;
+
+void intHandler(int dummy) {
+        keepRunning = 0;
+}
 
 PC2Mixer::PC2Mixer(PC2USBDevice *device) {
 	this->device = device;
@@ -21,6 +28,11 @@ void PC2Mixer::speaker_mute(bool is_muted) {
 }
 
 void PC2Mixer::speaker_power(bool is_powered) {
+    // B&O software will always unmute after turning power on,
+    // and mute before turning off. I don't know if there's any
+    // reason for this but I have observed the PC2 crashing 
+    // very hard if this is fudged, so - I'm going to do what 
+    // B&O does.
     uint8_t power_command = is_powered ? 0xFF : 0x00;
 
     if (is_powered) {
@@ -35,6 +47,9 @@ void PC2Mixer::speaker_power(bool is_powered) {
 }
 
 void PC2Mixer::adjust_volume(int adjustment) {
+    // Gradually adjusting volume avoids a square pulse.
+    // I've always gotten those pulses on both my Beosystem 7000 and
+    // this PC2 too, but that might just be bad caps I guess?
     if (!adjustment) return;
 
     int increment = (adjustment > 0) ? 1 : -1;
@@ -47,6 +62,10 @@ void PC2Mixer::adjust_volume(int adjustment) {
 }
 
 void PC2Mixer::send_routing_state() {
+    // For an as-yet-unknown reason, when the device is neither transmitting
+    // or distributing, software always seems to assert the fourth byte.
+    // I don't know what it does and have not examined closely what 
+    // effect it has.
     uint8_t muted = 0x00;
 
     if(! (this->state.distributing_on_ml || this->state.transmitting_locally)) 
@@ -80,34 +99,37 @@ void PC2Mixer::ml_distribute(bool transmit_enabled) {
 };
 
 void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness) {
-    uint8_t vol_byte = volume | loudness ? 0x80 : 0x00;
+    uint8_t vol_byte = volume | (loudness ? 0x80 : 0x00);
 
     this->device->send_telegram({ 0xe3, vol_byte, bass, treble, balance });
 }
 
+#define BEO4_KEY_PC 0x8B
 class Beo4 {
 public:
-	static uint8_t source_from_keycode(uint8_t beo4_code) {
-		std::map<uint8_t, uint8_t> map;
-		map[0x80] = 0x0B;
-		map[0x81] = 0x6F;
-		map[0x82] = 0x33;
-		map[0x85] = 0x16;
-		map[0x86] = 0x29;
-		map[0x8A] = 0x1F;
-		map[0x8B] = 0x47;
-		map[0x8D] = 0x3E;
-		map[0x91] = 0x79;
-		map[0x92] = 0x8D;
-		map[0x93] = 0xA1;
-		return map[beo4_code];
-	}
+    static uint8_t source_from_keycode(uint8_t beo4_code) {
+        std::map<uint8_t, uint8_t> map;
+        map[0x80] = 0x0B;
+        map[0x81] = 0x6F;
+        map[0x82] = 0x33;
+        map[0x85] = 0x16;
+        map[0x86] = 0x29;
+        map[0x8A] = 0x1F;
+        map[BEO4_KEY_PC] = ML_SRC_PC; // PC
+        map[0x8D] = 0x3E;
+        map[0x91] = 0x79;
+        map[0x92] = 0x8D;
+        map[0x93] = 0xA1;
+        return map[beo4_code];
+    }
 
 	static bool is_source_key(uint8_t beo4_code) {
+            // TODO: Change these absolute hex values to defines or constants
+            // 0x0C (stby) is not included here
 		std::vector<uint8_t> source_keys = { 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,\
-											  0x88, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x90, 0x91,\
-											  0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xA8, 0x47,\
-											  0x0C, 0xFA };
+                                                     0x88, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x90, 0x91,\
+                                                     0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xA8, 0x47,\
+                                                     0xFA };
 		for (auto i : source_keys) {
 			if (beo4_code == i) return true;
 		}
@@ -117,28 +139,28 @@ public:
 };
 
 PC2::PC2() {
-	this->source_name[0x0B] = "TV";
-	this->source_name[0x15] = "V_MEM";
-	this->source_name[0x15] = "V_TAPE";
-	this->source_name[0x16] = "DVD_2";
-	this->source_name[0x16] = "V_TAPE2";
-	this->source_name[0x1F] = "SAT";
-	this->source_name[0x1F] = "DTV";
-	this->source_name[0x29] = "DVD";
-	this->source_name[0x33] = "DTV_2";
-	this->source_name[0x33] = "V_AUX";
-	this->source_name[0x3E] = "V_AUX2";
-	this->source_name[0x3E] = "DOORCAM";
-	this->source_name[0x47] = "PC";
-	this->source_name[0x6F] = "RADIO";
-	this->source_name[0x79] = "A_MEM";
-	this->source_name[0x7A] = "A_MEM2";
-	this->source_name[0x8D] = "CD";
-	this->source_name[0x97] = "A_AUX";
-	this->source_name[0xA1] = "N_RADIO";
+    this->source_name[0x0B] = "TV";
+    this->source_name[0x15] = "V_MEM";
+    this->source_name[0x15] = "V_TAPE";
+    this->source_name[0x16] = "DVD_2";
+    this->source_name[0x16] = "V_TAPE2";
+    this->source_name[0x1F] = "SAT";
+    this->source_name[0x1F] = "DTV";
+    this->source_name[0x29] = "DVD";
+    this->source_name[0x33] = "DTV_2";
+    this->source_name[0x33] = "V_AUX";
+    this->source_name[0x3E] = "V_AUX2";
+    this->source_name[0x3E] = "DOORCAM";
+    this->source_name[ML_SRC_PC] = "PC";
+    this->source_name[0x6F] = "RADIO";
+    this->source_name[0x79] = "A_MEM";
+    this->source_name[0x7A] = "A_MEM2";
+    this->source_name[0x8D] = "CD";
+    this->source_name[0x97] = "A_AUX";
+    this->source_name[0xA1] = "N_RADIO";
 
-	this->device = new PC2USBDevice;
-	this->mixer = new PC2Mixer(this->device);
+    this->device = new PC2USBDevice;
+    this->mixer = new PC2Mixer(this->device);
 //	this->amqp = new AMQP;
 }
 
@@ -155,7 +177,6 @@ void PC2::yield() {
 
 bool PC2::open() {
 	this->device->open();
-	init();
 	return true;
 }
 
@@ -165,8 +186,8 @@ void PC2::send_beo4_code(uint8_t dest, uint8_t code) {
 	this->device->send_telegram({ 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00 });
 };
 
-#include <iomanip>
 void PC2::process_beo4_keycode(uint8_t keycode) {
+    //TODO: This should be separated from "libpc2"
     BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
 
 	if (Beo4::is_source_key(keycode)) {
@@ -179,22 +200,41 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
 			}
 		}
 
-		this->active_source = Beo4::source_from_keycode(keycode);
-		this->amqp->set_active_source(this->active_source);
+                if (keycode == BEO4_KEY_PC) {
+                    this->mixer->transmit_locally(true);
+                    this->mixer->speaker_power(true);
+                }
 
-		char *hexmsg = (char *)malloc(3);
-		sprintf(hexmsg, "%02X", keycode);
-		this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
-		free(hexmsg);
+		//this->active_source = Beo4::source_from_keycode(keycode);
+                if(this->amqp != nullptr) {
+                    // TODO: Cleaner design would be to have this in the AMQP sources!
+                    // this->amqp->notify_source_change or whatever
+                    this->amqp->set_active_source(this->active_source);
+                    char *hexmsg = (char *)malloc(3);
+                    sprintf(hexmsg, "%02X", keycode);
+                    this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
+                    free(hexmsg);
+                }
 	}
 	else {
                 // Volume up
 		if (keycode == 0x60) {
                     this->mixer->adjust_volume(1);
+                    if(this->notify != nullptr) {
+                        this->notify->notify_volume(this->mixer->state.volume);
+                    }
                 }
                 // Volume down
 		if (keycode == 0x64) {
                     this->mixer->adjust_volume(-1);
+                    if(this->notify != nullptr) {
+                        this->notify->notify_volume(this->mixer->state.volume);
+                    }
+                }
+
+                // Mute
+                if (keycode == 0x0d) {
+                    this->mixer->speaker_mute(!this->mixer->state.speakers_muted);
                 }
 		// LIGHT key has been pressed; we're now in LIGHT mode for about 25 seconds
 		// or until it is explicitly cancelled by the remote with 0x58.
@@ -310,12 +350,12 @@ void PC2::send_audio() {
 	telegram = this->device->get_data(); // expect an ACK
 }
 
-void PC2::event_loop() {
-	while (1) {
+void PC2::event_loop(volatile bool & keepRunning) {
+	while (keepRunning) {
 		PC2Telegram telegram;
-
-		telegram = this->device->get_data();
-		process_telegram(telegram);
+		telegram = this->device->get_data(300);
+                if (telegram.size()) 
+                    process_telegram(telegram);
 	}
 }
 void PC2::set_address_filter() {
@@ -349,12 +389,12 @@ PC2::~PC2() {
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
 	this->device->send_telegram({ 0xf1 }); // Send initialization command.
-	//this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
+	this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
         //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
         //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 
         //                                            // then another (60 02 0A 01 61, probably some escape character for a list).
-	//expect_ack();
-	//yield("Software version");
+	expect_ack();
+	yield("Software version");
 	//this->mixer->transmit_locally(true);
         //this->mixer->speaker_power(true);
 //	this->device->send_telegram({ 0x29 }); // Requests software version?
@@ -373,7 +413,7 @@ void PC2::init() {
 	//yield();
 	//this->mixer->ml_distribute(false);
 
-	this->device->send_telegram({ 0x26 }); // get status info (PC2 will send a 06 00/01 to say if HP are in)
+	//this->device->send_telegram({ 0x26 }); // get status info (PC2 will send a 06 00/01 to say if HP are in)
 	//// Check if a video master is present?
 	//this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 });
 	//expect_ack();
@@ -384,9 +424,28 @@ void PC2::init() {
 	//this->device->send_telegram({ 0xf9, 0x80 });
 
 	//        send_beo4_code(0xc0, 0x91);
+        //this->mixer->speaker_power(false);
 }
-int main() {
-	PC2 pc;
-	pc.open();
-	pc.event_loop();
+int main(int argc, char *argv[]) {
+    if(argc == 2) {
+        PC2 pc;
+        pc.open();
+
+        if(argv[1][0] == '1') {
+	    pc.mixer->transmit_locally(true);
+            pc.mixer->speaker_power(true);
+        } else if (argv[1][0] == '0') {
+            pc.mixer->speaker_power(false);
+        } else if (argv[1][0] == 'm') {
+            pc.notify = new PC2Notifier();
+            signal(SIGINT, intHandler);
+            pc.init();
+            pc.mixer->set_parameters(0x22, 0, 0, 0, false);
+            pc.event_loop(keepRunning);
+	    pc.mixer->transmit_locally(false);
+            pc.mixer->speaker_power(false);
+        }
+    } else {
+        printf("Usage: %s (figure out the rest from source)\n", argv[0]);
+    }
 }
