@@ -55,11 +55,32 @@ void PC2Mixer::send_routing_state() {
         muted = 0x01;
 
     uint8_t distribute = this->state.distributing_on_ml ? 0x01 : 0x00;
-    uint8_t locally = this->state.transmitting_locally ? 0x01 : 0x00;
+
+    uint8_t locally;
+
+    if (this->state.transmitting_locally && this->state.transmitting_from_ml)
+        locally = 0x03;
+    else if (this->state.transmitting_from_ml)
+        locally = 0x04;
+    else if (this->state.transmitting_locally)
+        locally = 0x01;
+    else
+        locally = 0x00;
+
 
     this->device->send_telegram({ 0xe7, muted });
     this->device->send_telegram({ 0xe5, locally, distribute, 0x00, muted });
 }
+
+void PC2Mixer::transmit_from_ml(bool transmit_enabled) {
+    if (this->state.transmitting_from_ml != transmit_enabled) {
+        BOOST_LOG_TRIVIAL(info) << "Setting local output";
+        this->state.transmitting_from_ml = transmit_enabled;
+        this->send_routing_state();
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "Local ML output already in requested state";
+    }
+};
 
 void PC2Mixer::transmit_locally(bool transmit_enabled) {
     if (this->state.transmitting_locally != transmit_enabled) {

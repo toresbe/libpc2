@@ -78,6 +78,28 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 		}
 	}
 	break;
+        case(0x82):
+        {
+            std::string source_name;
+            if(this->source_name.count(tgram[14])) {
+                source_name = this->source_name[tgram[14]];
+            } else {
+                source_name = "unknown source";
+            }
+            
+            std::string state;
+            if (tgram[16] == ML_STATE_STOPPED) state = "stopped";
+            else if (tgram[16] == ML_STATE_PLAYING) state = "playing";
+            else if (tgram[16] == ML_STATE_PLAYING) state = "fast-forwarding";
+            else if (tgram[16] == ML_STATE_PLAYING) state = "rewinding";
+            else state = "unknown";
+        //14 = source, 15 = track, 16 = playstate
+            
+            BOOST_LOG_TRIVIAL(info) << boost::format("Node #%02X is %s source %s (track %d)") % (unsigned int)tgram[4] % state % source_name % (unsigned int) tgram[15];
+
+//        60 14 00 01 C1 01 14 00 00 00 82 09 01 04 8D 06 02 00 00 01 FF FF 61
+        }
+        break;
 	case(0x10):
 		if (!memcmp("\x10\x03\x03\x01\x00\x01", (void *)(tgram.data() + 10), 6)) {
 			BOOST_LOG_TRIVIAL(info) << "Video master is requesting audio control back. Relinquishing...";
@@ -114,8 +136,8 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
 		// So, I don't know what this telegram type actually means yet or how to decode it, however I have observed it in 
 		// contexts where audio bus ownership is handed from one device to another. Erring on the side of caution I've decided 
 		// to just cut the feed if this should ever occur (it's not in any "supported" configuration for this code).
-		BOOST_LOG_TRIVIAL(warning) << "Disabling audio output because we got a 0x44 telegram and I don't know what that means (see code)";
-		this->mixer->ml_distribute(false);
+		//BOOST_LOG_TRIVIAL(warning) << "Disabling audio output because we got a 0x44 telegram and I don't know what that means (see code)";
+		//this->mixer->ml_distribute(false);
 		break;
 	case(0x45):
 	{

@@ -12,6 +12,7 @@
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 #include "pc2/mixer.hpp"
+#include "pc2/beo4.hpp"
 
 static volatile bool keepRunning = 1;
 
@@ -19,44 +20,10 @@ void intHandler(int dummy) {
     keepRunning = 0;
 }
 
-#define BEO4_KEY_PC 0x8B
-class Beo4 {
-    public:
-        static uint8_t source_from_keycode(uint8_t beo4_code) {
-            std::map<uint8_t, uint8_t> map;
-            map[0x80] = 0x0B;
-            map[0x81] = 0x6F;
-            map[0x82] = 0x33;
-            map[0x85] = 0x16;
-            map[0x86] = 0x29;
-            map[0x8A] = 0x1F;
-            map[BEO4_KEY_PC] = ML_SRC_PC; // PC
-            map[0x8D] = 0x3E;
-            map[0x91] = 0x79;
-            map[0x92] = 0x8D;
-            map[0x93] = 0xA1;
-            return map[beo4_code];
-        }
-
-        static bool is_source_key(uint8_t beo4_code) {
-            // TODO: Change these absolute hex values to defines or constants
-            // 0x0C (stby) is not included here
-            std::vector<uint8_t> source_keys = { 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,\
-                0x88, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x90, 0x91,\
-                    0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0xA8, 0x47,\
-                    0xFA };
-            for (auto i : source_keys) {
-                if (beo4_code == i) return true;
-            }
-
-            return false;
-        }
-};
-
 PC2::PC2() {
-    this->source_name[0x0B] = "TV";
-    this->source_name[0x15] = "V_MEM";
-    this->source_name[0x15] = "V_TAPE";
+    this->source_name[ML_SRC_TV] = "TV";
+    this->source_name[ML_SRC_V_MEM] = "V_MEM";
+    this->source_name[ML_SRC_V_TAPE] = "V_TAPE";
     this->source_name[0x16] = "DVD_2";
     this->source_name[0x16] = "V_TAPE2";
     this->source_name[0x1F] = "SAT";
@@ -69,10 +36,12 @@ PC2::PC2() {
     this->source_name[ML_SRC_PC] = "PC";
     this->source_name[0x6F] = "RADIO";
     this->source_name[0x79] = "A_MEM";
+    this->source_name[0x79] = "A_TAPE";
     this->source_name[0x7A] = "A_MEM2";
     this->source_name[0x8D] = "CD";
     this->source_name[0x97] = "A_AUX";
     this->source_name[0xA1] = "N_RADIO";
+    this->source_name[ML_SRC_PHONO] = "PHONO";
 
     this->device = new PC2USBDevice;
     this->mixer = new PC2Mixer(this->device);
@@ -95,11 +64,23 @@ bool PC2::open() {
     return true;
 }
 
-
-
 void PC2::send_beo4_code(uint8_t dest, uint8_t code) {
     this->device->send_telegram({ 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00 });
 };
+void PC2::request_source(uint8_t source_id) {
+    this->device->send_telegram({ 0x24 }); // don't know what this does, only the PC2 uses this
+    this->device->get_data(); // expect 24 01
+    this->device->send_telegram({0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 
+            0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe4, 0x00});
+    expect_ack();
+    this->device->send_telegram({ 0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 
+            0x45, 0x07, 0x01, 0x02, source_id, 0x00, 0x02, 0x01, 
+            0x00, 0x00, 0xad, 0x00, 0x61 });
+    expect_ack();
+    this->device->get_data(); // expect 0x44 back
+    this->device->send_telegram({ 0xe4, 0x01 });
+    expect_ack();
+}
 
 void PC2::process_beo4_keycode(uint8_t keycode) {
     //TODO: This should be separated from "libpc2"
@@ -115,8 +96,21 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
             }
         }
 
-        if (keycode == BEO4_KEY_PC) {
+        if (keycode == BEO4_KEY_PHONO) {
+            request_source(ML_SRC_PHONO);
+            this->mixer->transmit_from_ml(true);
+            this->mixer->speaker_power(true);
+        } else if (keycode == BEO4_KEY_CD) {
+            request_source(ML_SRC_CD);
+            this->mixer->transmit_from_ml(true);
+            this->mixer->speaker_power(true);
+        } else if (keycode == BEO4_KEY_A_AUX) {
+            request_source(ML_SRC_A_AUX);
+            this->mixer->transmit_from_ml(true);
+            this->mixer->speaker_power(true);
+        } else if (keycode == BEO4_KEY_PC) {
             this->mixer->transmit_locally(true);
+            this->mixer->transmit_from_ml(false);
             this->mixer->speaker_power(true);
         }
 
@@ -145,6 +139,13 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
             if(this->notify != nullptr) {
                 this->notify->notify_volume(this->mixer->state.volume);
             }
+        }
+
+        if (keycode == 0x20) {
+            printf("you are going insane\n");
+            this->mixer->transmit_locally(true);
+            this->mixer->ml_distribute(true);
+            this->mixer->speaker_power(true);
         }
 
         // Power off
@@ -259,8 +260,7 @@ void PC2::send_audio() {
     this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x08,0x00,0x01,0x96,0x00 });
     telegram = this->device->get_data(); // expect an ACK
     telegram = this->device->get_data(); // expect reply from V MASTER
-    this->device->send_telegram({ 0xea, 0xff }); // does not generate a reply
-    this->device->send_telegram({ 0xea, 0x81 }); // this, however, does
+    this->mixer->speaker_power(true);
     telegram = this->device->get_data(); // not sure what this is
     this->device->send_telegram({ 0xfa, 0x30, 0xd0, 0x65, 0x80, 0x6c, 0x22 });
     this->device->send_telegram({ 0xf9, 0x64 });
@@ -283,7 +283,8 @@ void PC2::event_loop(volatile bool & keepRunning) {
 void PC2::set_address_filter() {
     // I am not at all sure how this works but it seems to be a variable-length list of destination
     // address bytes to which the PC2 should respond
-    this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
+    //this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
+    this->device->send_telegram({ 0xf6, 0x00, 0xc0 });
 }
 
 void PC2::broadcast_timestamp() {
@@ -311,7 +312,7 @@ PC2::~PC2() {
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
     this->device->send_telegram({ 0xf1 }); // Send initialization command.
-    this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
+    this->device->send_telegram({ 0x80, 0xc0, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
     //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
     //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 
     //                                            // then another (60 02 0A 01 61, probably some escape character for a list).
@@ -321,7 +322,8 @@ void PC2::init() {
     //this->mixer->speaker_power(true);
     //	this->device->send_telegram({ 0x29 }); // Requests software version?
     // sends an ACK-ish message (60 05 49 02 36 01 04 61); then another (60 02 0A 01 61).
-    //	set_address_filter();
+    set_address_filter();
+    //this->device->send_telegram({0xe0, 0xC1, 0xC0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x02, 0x04, 0x02, 0x01});
     /*this->device->send_telegram({ 0xe0, 0x83, 0xc2, 0x01, 0x14, 0x00, 0x47, 0x00, \
     //							  0x87, 0x1f, 0x04, 0x47, 0x01, 0x00, 0x00, 0x1f, \
     //							  0xbe, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x01, \
@@ -347,6 +349,10 @@ void PC2::init() {
 
     //        send_beo4_code(0xc0, 0x91);
     //this->mixer->speaker_power(false);
+    // look for video masters?
+    this->device->send_telegram({0xe0, 0xc0, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe3, 0x00, 0x61});
+    // look for audio masters?
+    this->device->send_telegram({0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe4, 0x00, 0x61});
 }
 int main(int argc, char *argv[]) {
     if(argc == 2) {
