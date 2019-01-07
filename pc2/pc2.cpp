@@ -81,7 +81,6 @@ void PC2::process_beo4_keycode(uint8_t keycode) {
 
     BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
     this->interface->beo4_press(keycode);
-
 }
 void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
     this->state.volume = tgram[3] & 0x7f;

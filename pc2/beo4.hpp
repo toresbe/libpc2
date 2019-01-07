@@ -1,6 +1,7 @@
 #ifndef __BEO4_HPP
 #define __BEO4_HPP
 
+#define BEO4_KEY_TV 0x80
 #define BEO4_KEY_PC 0x8B
 #define BEO4_KEY_CD 0x92
 #define BEO4_KEY_PHONO 0x93
@@ -14,7 +15,7 @@ class Beo4 {
     public:
         static uint8_t source_from_keycode(uint8_t beo4_code) {
             std::map<uint8_t, uint8_t> map;
-            map[0x80] = 0x0B;
+            map[BEO4_KEY_TV] = 0x0B;
             map[0x81] = 0x6F;
             map[0x82] = 0x33;
             map[0x85] = 0x16;
