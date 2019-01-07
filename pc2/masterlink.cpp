@@ -7,7 +7,6 @@
 #include <vector>
 #include <array>
 
-#include "amqp/amqp.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 

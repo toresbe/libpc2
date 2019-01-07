@@ -1,4 +1,3 @@
-#include <signal.h>
 #include <cstdio>
 #include <iomanip>
 
@@ -8,19 +7,14 @@
 #include <vector>
 #include <array>
 
-#include "amqp/amqp.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 #include "pc2/mixer.hpp"
 #include "pc2/beo4.hpp"
 
-static volatile bool keepRunning = 1;
-
-void intHandler(int dummy) {
-    keepRunning = 0;
-}
-
-PC2::PC2() {
+PC2::PC2(PC2Interface * interface) {
+    this->interface = interface;
+    this->interface->pc2 = this;
     this->source_name[ML_SRC_TV] = "TV";
     this->source_name[ML_SRC_V_MEM] = "V_MEM";
     this->source_name[ML_SRC_V_TAPE] = "V_TAPE";
@@ -45,7 +39,6 @@ PC2::PC2() {
 
     this->device = new PC2USBDevice;
     this->mixer = new PC2Mixer(this->device);
-    //	this->amqp = new AMQP;
 }
 
 void PC2::yield(std::string description) {
@@ -67,6 +60,7 @@ bool PC2::open() {
 void PC2::send_beo4_code(uint8_t dest, uint8_t code) {
     this->device->send_telegram({ 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00 });
 };
+
 void PC2::request_source(uint8_t source_id) {
     this->device->send_telegram({ 0x24 }); // don't know what this does, only the PC2 uses this
     this->device->get_data(); // expect 24 01
@@ -83,109 +77,11 @@ void PC2::request_source(uint8_t source_id) {
 }
 
 void PC2::process_beo4_keycode(uint8_t keycode) {
-    //TODO: This should be separated from "libpc2"
+    // TODO: This should offer a more semantically meaningfully separated callback structure.
+
     BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
+    this->interface->beo4_press(keycode);
 
-    if (Beo4::is_source_key(keycode)) {
-        printf("Active source change\n");
-        if (keycode == 0x91) { // A. MEM
-            if (this->active_source != Beo4::source_from_keycode(keycode)) {
-                //send_audio();
-            } else {
-                printf("Active source is %02X, new is %02X; no need to send audio\n", this->active_source, Beo4::source_from_keycode(keycode));
-            }
-        }
-
-        if (keycode == BEO4_KEY_PHONO) {
-            request_source(ML_SRC_PHONO);
-            this->mixer->transmit_from_ml(true);
-            this->mixer->speaker_power(true);
-        } else if (keycode == BEO4_KEY_CD) {
-            request_source(ML_SRC_CD);
-            this->mixer->transmit_from_ml(true);
-            this->mixer->speaker_power(true);
-        } else if (keycode == BEO4_KEY_A_AUX) {
-            request_source(ML_SRC_A_AUX);
-            this->mixer->transmit_from_ml(true);
-            this->mixer->speaker_power(true);
-        } else if (keycode == BEO4_KEY_PC) {
-            this->mixer->transmit_locally(true);
-            this->mixer->transmit_from_ml(false);
-            this->mixer->speaker_power(true);
-        }
-
-        //this->active_source = Beo4::source_from_keycode(keycode);
-        if(this->amqp != nullptr) {
-            // TODO: Cleaner design would be to have this in the AMQP sources!
-            // this->amqp->notify_source_change or whatever
-            this->amqp->set_active_source(this->active_source);
-            char *hexmsg = (char *)malloc(3);
-            sprintf(hexmsg, "%02X", keycode);
-            this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
-            free(hexmsg);
-        }
-    }
-    else {
-        // Volume up
-        if (keycode == 0x60) {
-            this->mixer->adjust_volume(1);
-            if(this->notify != nullptr) {
-                this->notify->notify_volume(this->mixer->state.volume);
-            }
-        }
-        // Volume down
-        if (keycode == 0x64) {
-            this->mixer->adjust_volume(-1);
-            if(this->notify != nullptr) {
-                this->notify->notify_volume(this->mixer->state.volume);
-            }
-        }
-
-        if (keycode == 0x20) {
-            printf("you are going insane\n");
-            this->mixer->transmit_locally(true);
-            this->mixer->ml_distribute(true);
-            this->mixer->speaker_power(true);
-        }
-
-        // Power off
-        if (keycode == 0x0c) {
-            this->mixer->transmit_locally(false);
-            this->mixer->speaker_power(false);
-        }
-
-        // Mute
-        if (keycode == 0x0d) {
-            this->mixer->speaker_mute(!this->mixer->state.speakers_muted);
-        }
-
-        // LIGHT key has been pressed; we're now in LIGHT mode for about 25 seconds
-        // or until it is explicitly cancelled by the remote with 0x58.
-        if (keycode == 0x9b) {
-            this->last_light_timestamp = std::time(nullptr);
-            printf("Entering LIGHT mode...\n");
-        }
-        // LIGHT mode has been explicitly cancelled
-        if (keycode == 0x58) {
-            this->last_light_timestamp = 0;
-            printf("Leaving LIGHT mode...\n");
-        }
-        // If a LIGHT command has not yet timed out
-        if (std::time(nullptr) <= (this->last_light_timestamp + 25)) {
-            char *hexmsg = (char *)malloc(3);
-            sprintf(hexmsg, "%02X", keycode);
-            this->amqp->send_message("LIGHT", hexmsg);
-            free(hexmsg);
-        }
-        else {
-            if (this->active_source) {
-                char *hexmsg = (char *)malloc(3);
-                sprintf(hexmsg, "%02X", keycode);
-                this->amqp->send_message(this->source_name.at(this->active_source).c_str(), hexmsg);
-                free(hexmsg);
-            }
-        }
-    }
 }
 void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
     this->state.volume = tgram[3] & 0x7f;
@@ -354,26 +250,4 @@ void PC2::init() {
     // look for audio masters?
     this->device->send_telegram({0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe4, 0x00, 0x61});
 }
-int main(int argc, char *argv[]) {
-    if(argc == 2) {
-        PC2 pc;
-        pc.open();
 
-        if(argv[1][0] == '1') {
-            pc.mixer->transmit_locally(true);
-            pc.mixer->speaker_power(true);
-        } else if (argv[1][0] == '0') {
-            pc.mixer->speaker_power(false);
-        } else if (argv[1][0] == 'm') {
-            pc.notify = new PC2Notifier();
-            signal(SIGINT, intHandler);
-            pc.init();
-            pc.mixer->set_parameters(0x22, 0, 0, 0, false);
-            pc.event_loop(keepRunning);
-            pc.mixer->transmit_locally(false);
-            pc.mixer->speaker_power(false);
-        }
-    } else {
-        printf("Usage: %s (figure out the rest from source)\n", argv[0]);
-    }
-}

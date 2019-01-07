@@ -7,9 +7,7 @@
 #include <map>
 
 #include "pc2/pc2device.hpp"
-#include "pc2/notify.hpp"
 #include "pc2/mixer.hpp"
-#include "amqp/amqp.hpp"
 
 #define ML_STATE_STOPPED 0x01
 #define ML_STATE_PLAYING 0x02
@@ -30,18 +28,25 @@
 #define ML_SRC_A_AUX 0x97
 #define ML_SRC_PC 0x47
 
+class PC2; 
+
+class PC2Interface {
+    public:
+    PC2 * pc2;
+    virtual void beo4_press(uint8_t keycode) = 0;
+};
+
 class PC2 {
     PC2USBDevice *device;
-    AMQP *amqp = nullptr;
     uint8_t active_source = 0;
     unsigned int listener_count = 0;
     std::map<uint8_t, std::string> source_name;
     std::time_t last_light_timestamp = 0;
+    PC2Interface *interface;
 
     public:
-    PC2Notifier *notify = nullptr;
     PC2Mixer *mixer;
-    PC2();
+    PC2(PC2Interface * interface);
     void yield();
     void yield(std::string description);
     void set_address_filter();
