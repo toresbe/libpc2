@@ -37,7 +37,6 @@ class PC2Interface {
 };
 
 class PC2 {
-    PC2USBDevice *device;
     uint8_t active_source = 0;
     unsigned int listener_count = 0;
     std::map<uint8_t, std::string> source_name;
@@ -45,6 +44,7 @@ class PC2 {
     PC2Interface *interface;
 
     public:
+    PC2USBDevice *device;
     PC2Mixer *mixer;
     PC2(PC2Interface * interface);
     void yield();
