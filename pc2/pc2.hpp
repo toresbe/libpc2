@@ -36,6 +36,9 @@ class PC2Interface {
     virtual void beo4_press(uint8_t keycode) = 0;
 };
 
+class Masterlink {
+};
+
 class PC2 {
     uint8_t active_source = 0;
     unsigned int listener_count = 0;
@@ -57,7 +60,7 @@ class PC2 {
     bool open();
     void process_ml_telegram(PC2Telegram & tgram);
     void send_beo4_code(uint8_t dest, uint8_t code);
-    void process_beo4_keycode(uint8_t keycode);
+    void process_beo4_keycode(uint8_t type, uint8_t keycode);
     void process_telegram(PC2Telegram & tgram);
     void expect_ack();
     void send_audio();

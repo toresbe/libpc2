@@ -76,10 +76,15 @@ void PC2::request_source(uint8_t source_id) {
     expect_ack();
 }
 
-void PC2::process_beo4_keycode(uint8_t keycode) {
+void PC2::process_beo4_keycode(uint8_t type, uint8_t keycode) {
     // TODO: This should offer a more semantically meaningfully separated callback structure.
 
     BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
+
+    if(type == 0x0F && keycode == 0x0C) {
+        BOOST_LOG_TRIVIAL(warning) << "We should send a Masterlink shutdown signal now!";
+    }
+
     this->interface->beo4_press(keycode);
 }
 void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
@@ -107,7 +112,7 @@ void PC2::process_telegram(PC2Telegram & tgram) {
         process_ml_telegram(tgram);
     }
     if (tgram[2] == 0x02) {
-        process_beo4_keycode(tgram[6]);
+        process_beo4_keycode(tgram[4], tgram[6]);
     }
     if (tgram[2] == 0x03) {
         // PC2 device sending mixer state
