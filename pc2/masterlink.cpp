@@ -19,6 +19,12 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
     }
     printf(".\n");
     TelegramPrinter::print(mlt);
+    if(this->interface->address_mask == PC2Interface::address_masks::promisc) {
+        if(mlt.dest_node == 0xc0) {
+            BOOST_LOG_TRIVIAL(debug) << "Not processing packet addressed to V_MASTER";
+            return;
+        }
+    }
 
     switch (tgram[10]) {
         case(0x04):

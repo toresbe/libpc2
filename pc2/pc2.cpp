@@ -180,11 +180,26 @@ void PC2::event_loop(volatile bool & keepRunning) {
             process_telegram(telegram);
     }
 }
+
 void PC2::set_address_filter() {
     // I am not at all sure how this works but it seems to be a variable-length list of destination
     // address bytes to which the PC2 should respond
-    //this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
-    this->device->send_telegram({ 0xf6, 0x00, 0xc0 });
+    switch(this->interface->address_mask) {
+        case PC2Interface::address_masks::audio_master:
+            BOOST_LOG_TRIVIAL(info) << "Setting address filter to audio master mode";
+            this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
+            return;
+        case PC2Interface::address_masks::beoport:
+            BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
+            this->device->send_telegram({ 0xf6, 0x00, 0xc0 });
+            return;
+        case PC2Interface::address_masks::promisc:
+            BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
+            this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0xc0, 0x00, 0x00 });
+            return;
+        default:
+            BOOST_LOG_TRIVIAL(error) << "Did not get address mask!";
+    }
 }
 
 void PC2::broadcast_timestamp() {

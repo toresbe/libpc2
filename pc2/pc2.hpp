@@ -33,6 +33,12 @@ class PC2;
 class PC2Interface {
     public:
     PC2 * pc2;
+    enum address_masks {
+        audio_master,
+        beoport,
+        promisc
+    };
+    int address_mask;
     virtual void beo4_press(uint8_t keycode) = 0;
 };
 
