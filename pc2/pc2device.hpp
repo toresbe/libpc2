@@ -13,6 +13,7 @@ class PC2USBDevice {
 public:
 	PC2USBDevice();
 	bool open();
+        void reset();
 	bool send_telegram(const PC2Message &message);
 	PC2Telegram get_data(int timeout = 0);
 };

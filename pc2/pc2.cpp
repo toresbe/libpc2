@@ -226,7 +226,7 @@ PC2::~PC2() {
 
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
-    this->device->send_telegram({ 0xf1 }); // Send initialization command.
+    this->device->reset();
     this->device->send_telegram({ 0x80, 0xc0, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
     //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
     //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 

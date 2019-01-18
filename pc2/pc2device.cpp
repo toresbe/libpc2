@@ -97,6 +97,9 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 	assert(actual_length == telegram.size());
 	return true;
 }
+void PC2USBDevice::reset() {
+    this->send_telegram({ 0xf1 }); // Send initialization command.
+}
 
 PC2Telegram PC2USBDevice::get_data(int timeout) {
 	// in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
