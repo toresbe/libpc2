@@ -80,18 +80,18 @@ class MasterlinkTelegram {
             {0x13, "NODE_13"},
         };
 
-        enum payload_type {
+        enum payload_types: uint8_t {
             master_present = 0x04,
             display_data = 0x06,
             metadata = 0x0b,
         };
 
         std::map<uint8_t, std::string> payload_type_name = {
-            {payload_type::master_present, "MASTER_PRESENT"},
+            {payload_types::master_present, "MASTER_PRESENT"},
             {0x05, "???"},
-            {payload_type::display_data, "DISPLAY_DATA"},
+            {payload_types::display_data, "DISPLAY_DATA"},
             {0x08, "???"},
-            {payload_type::metadata, "METADATA"},
+            {payload_types::metadata, "METADATA"},
             {0x0d, "BEO4_KEY"},
             {0x10, "STANDBY"},
             {0x11, "RELEASE"},
@@ -110,24 +110,32 @@ class MasterlinkTelegram {
             {0x96, "PC_PRESENT"},
         };
 
-        std::map<uint8_t, std::string> telegram_type_name = {
-            {0x0a, "COMMAND"},
-            {0x0b, "REQUEST"},
-            {0x14, "STATUS"},
-            {0x2c, "INFO"},
-            {0x40, "TIME"}, // not seen so far, but a forum post suggests this exists...
-            {0x5e, "CONFIG"},
+        enum telegram_types: uint8_t {
+            command = 0x0a,
+            request = 0x0b,
+            status = 0x14,
+            info = 0x2c,
+            time = 0x40,
+            config = 0x5e,
         };
-        ;
+
+        std::map<telegram_types, std::string> telegram_type_name = {
+            {command, "COMMAND"},
+            {request, "REQUEST"},
+            {status, "STATUS"},
+            {info, "INFO"},
+            {time, "TIME"}, // not seen so far, but a forum post suggests this exists...
+            {config, "CONFIG"},
+        };
 
         std::vector<uint8_t> data;
         std::vector<uint8_t> payload;
         uint8_t dest_node;
         uint8_t src_node;
-        uint8_t payload_type;
+        enum payload_types payload_type;
         unsigned int payload_size;
         unsigned int payload_version;
-        uint8_t telegram_type;
+        enum telegram_types telegram_type;
 
         MasterlinkTelegram(PC2Telegram & tgram);
 };
@@ -154,4 +162,10 @@ class DecodedMessageFactory {
         static DecodedMessage *make(MasterlinkTelegram & tgram);
 };
 std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m);
+
+class MasterPresentMessage: public DecodedMessage {
+    public:
+        MasterPresentMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} { }
+        std::ostream& serialize(std::ostream& outputStream);
+};
 #endif

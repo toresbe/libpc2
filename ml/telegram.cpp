@@ -21,8 +21,8 @@ MasterlinkTelegram::MasterlinkTelegram(PC2Telegram & tgram) {
 
     this->dest_node = this->data[1];
     this->src_node = this->data[2];
-    this->telegram_type = this->data[4];
-    this->payload_type = this->data[8];
+    this->telegram_type = (telegram_types)this->data[4];
+    this->payload_type = (payload_types)this->data[8];
     this->payload_size = this->data[9];
     this->payload_version = this->data[10];
 };
@@ -70,23 +70,18 @@ std::ostream& DisplayDataMessage::serialize(std::ostream& outputStream) {
     analysis.append("]");
     return outputStream << analysis;
 };
-class MasterPresentMessage: public DecodedMessage {
-    public:
-        MasterPresentMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} { }
 
-        std::ostream& serialize(std::ostream& outputStream) {
-            std::string analysis;
+std::ostream& MasterPresentMessage::serialize(std::ostream& outputStream) {
+    std::string analysis;
 
-            int i = 0 ;
-            while(i < this->tgram.payload_size) {
-                analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->tgram.payload[i]).str());
-                i++;
-            }
+    int i = 0 ;
+    while(i < this->tgram.payload_size) {
+        analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->tgram.payload[i]).str());
+        i++;
+    }
 
-            return outputStream << analysis;
-        }
-};
-
+    return outputStream << analysis;
+}
 
 std::ostream& UnknownMessage::serialize(std::ostream& outputStream) {
     return outputStream << "Unknown message";
@@ -180,11 +175,11 @@ std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m) {
 
 DecodedMessage *DecodedMessageFactory::make(MasterlinkTelegram & tgram) {
     switch (tgram.payload_type) {
-        case MasterlinkTelegram::payload_type::metadata:
+        case MasterlinkTelegram::payload_types::metadata:
             return new MetadataMessage(tgram);
-        case MasterlinkTelegram::payload_type::display_data:
+        case MasterlinkTelegram::payload_types::display_data:
             return new DisplayDataMessage(tgram);
-        case MasterlinkTelegram::payload_type::master_present:
+        case MasterlinkTelegram::payload_types::master_present:
             return new MasterPresentMessage(tgram);
         default:
             return new UnknownMessage(tgram);
