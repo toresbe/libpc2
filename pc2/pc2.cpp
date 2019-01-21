@@ -157,7 +157,7 @@ void PC2::set_address_filter() {
             return;
         case PC2Interface::address_masks::beoport:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
-            this->device->send_telegram({ 0xf6, 0x00, 0xc0 });
+            this->device->send_telegram({ 0xf6, 0x00, 0x01 });
             return;
         case PC2Interface::address_masks::promisc:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
@@ -193,7 +193,8 @@ PC2::~PC2() {
 //void PC2::send_source_status(uint8_t current_source, bool is_active);
 void PC2::init() {
     this->device->reset();
-    this->device->send_telegram({ 0x80, 0xc0, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
+    // this might be address discovery?
+    this->device->send_telegram({ 0x80, 0x01, 0x00 }); // The Beomedia 1 sends 80 29 here; 80 01 seems to work, too; as does 0x00 and 0xFF
     //                                           // I don't know what 0x80 does. It generates three replies; one ACK (60 04 41 01 01 01 61), 
     //                                            // then another ACK-ish message (software/hardware version, 60 05 49 02 36 01 04 61); 
     //                                            // then another (60 02 0A 01 61, probably some escape character for a list).
@@ -231,8 +232,8 @@ void PC2::init() {
     //        send_beo4_code(0xc0, 0x91);
     //this->mixer->speaker_power(false);
     // look for video masters?
-    this->device->send_telegram({0xe0, 0xc0, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe3, 0x00, 0x61});
+    //this->device->send_telegram({0xe0, 0xc0, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe3, 0x00});
     // look for audio masters?
-    this->device->send_telegram({0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe4, 0x00, 0x61});
+    //this->device->send_telegram({0xe0, 0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x0a, 0x01, 0x00, 0xe4, 0x00});
 }
 

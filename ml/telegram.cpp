@@ -11,6 +11,10 @@ MasterlinkTelegram::MasterlinkTelegram() {
     this->data = std::vector<uint8_t>();
 };
 
+GotoSourceTelegram::GotoSourceTelegram() {
+    this->data = std::vector<uint8_t>();
+}
+
 MasterPresentTelegram::MasterPresentTelegram(): DecodedMessage{} {
     this->data = std::vector<uint8_t>();
     this->payload_type = MasterlinkTelegram::payload_types::master_present;
@@ -217,6 +221,8 @@ DecodedMessage *DecodedMessageFactory::make(MasterlinkTelegram & tgram) {
             return new MetadataMessage(tgram);
         case MasterlinkTelegram::payload_types::display_data:
             return new DisplayDataMessage(tgram);
+        case MasterlinkTelegram::payload_types::goto_source:
+            return new GotoSourceTelegram(tgram);
         case MasterlinkTelegram::payload_types::master_present:
             return new MasterPresentTelegram(tgram);
         default:
