@@ -36,6 +36,7 @@ PC2Message MasterlinkTelegram::serialize() {
     this->data.push_back(0x00); // Spare
     this->data.push_back(this->payload_type);
     this->data.push_back((uint8_t) this->payload.size());
+    this->payload_size = this->payload.size();
     this->data.push_back((uint8_t) this->payload_version);
     this->data.insert(this->data.end(), this->payload.begin(), this->payload.end());
     this->data.push_back(checksum(this->data));
