@@ -13,12 +13,8 @@
 #include "pc2/beo4.hpp"
 
 void PC2::send_telegram(MasterlinkTelegram &tgram) {
-    PC2Message msg;
-    msg = tgram.serialize();
-    uint8_t len = msg.size();
-    msg.insert(msg.begin(), 0x60);
-    msg.insert(msg.begin(), len);
-    msg.insert(msg.end(), 0x61);
+    PC2Message msg = tgram.serialize();
+    msg.insert(msg.begin(), 0xe0);
     this->device->send_telegram(msg);
 }
 

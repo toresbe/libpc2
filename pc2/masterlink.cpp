@@ -20,9 +20,9 @@ void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
         MasterPresentTelegram reply;
 
         reply.telegram_type = MasterlinkTelegram::telegram_types::status;
-        reply.dest_node = request.src_node;
+        reply.dest_node = mlt.src_node;
         // FIXME: I should be smarter about where this comes from
-        reply.src_node = request.dest_node;
+        reply.src_node = mlt.dest_node;
         reply.payload_version = 4;
 
         // no idea what these bytes signify

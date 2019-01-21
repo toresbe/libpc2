@@ -13,6 +13,7 @@ MasterlinkTelegram::MasterlinkTelegram() {
 
 MasterPresentTelegram::MasterPresentTelegram(): DecodedMessage{} {
     this->data = std::vector<uint8_t>();
+    this->payload_type = MasterlinkTelegram::payload_types::master_present;
 }
 
 uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
