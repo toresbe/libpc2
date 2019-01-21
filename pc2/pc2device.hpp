@@ -9,7 +9,7 @@ typedef std::vector<uint8_t> PC2Telegram; // a PC2 message with the start, num_b
 class PC2USBDevice {
 	libusb_context *usb_ctx;
 	libusb_device *pc2_dev;
-	libusb_device_handle *pc2;
+	libusb_device_handle *pc2_handle;
 public:
 	PC2USBDevice();
 	bool open();

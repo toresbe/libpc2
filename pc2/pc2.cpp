@@ -155,7 +155,7 @@ void PC2::set_address_filter() {
             return;
         case PC2Interface::address_masks::promisc:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
-            this->device->send_telegram({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0xc0, 0x00, 0x00 });
+            this->device->send_telegram({ 0xf6, 0xc0, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
             return;
         default:
             BOOST_LOG_TRIVIAL(error) << "Did not get address mask!";

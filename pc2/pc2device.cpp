@@ -64,7 +64,7 @@ bool PC2USBDevice::open() {
 	}
 	int result = 0;
 
-	result = libusb_open(this->pc2_dev, &this->pc2);
+	result = libusb_open(this->pc2_dev, &this->pc2_handle);
 	if (result) {
 		BOOST_LOG_TRIVIAL(error) << "Could not open PC2 device, error:" << result;
 		throw PC2USBDeviceException;
@@ -92,7 +92,7 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 	BOOST_LOG_TRIVIAL(debug) << debug_message;
 
 	int actual_length;
-	int r = libusb_interrupt_transfer(this->pc2, 0x01, (unsigned char *)telegram.data(), telegram.size(), &actual_length, 0);
+	int r = libusb_interrupt_transfer(this->pc2_handle, 0x01, (unsigned char *)telegram.data(), telegram.size(), &actual_length, 0);
 	assert(r == 0);
 	assert(actual_length == telegram.size());
 	return true;
@@ -110,7 +110,7 @@ PC2Telegram PC2USBDevice::get_data(int timeout) {
 	bool eot = false;
 	int actual_length;
 	while (!eot) {
-		int r = libusb_interrupt_transfer(this->pc2, 0x81, buffer, 512, &actual_length, timeout);
+		int r = libusb_interrupt_transfer(this->pc2_handle, 0x81, buffer, 512, &actual_length, timeout);
 		if (r == LIBUSB_ERROR_TIMEOUT) {
 			//BOOST_LOG_TRIVIAL(info) << "Timed out waiting for message";
 			return msg;
