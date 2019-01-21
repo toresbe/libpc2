@@ -15,6 +15,11 @@
 void PC2::send_telegram(MasterlinkTelegram &tgram) {
     PC2Message msg;
     msg = tgram.serialize();
+    uint8_t len = msg.size();
+    msg.insert(msg.begin(), 0x60);
+    msg.insert(msg.begin(), len);
+    msg.insert(msg.end(), 0x61);
+    this->device->send_telegram(msg);
 }
 
 PC2::PC2(PC2Interface * interface) {
