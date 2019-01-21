@@ -15,27 +15,6 @@
 PC2::PC2(PC2Interface * interface) {
     this->interface = interface;
     this->interface->pc2 = this;
-    this->source_name[ML_SRC_TV] = "TV";
-    this->source_name[ML_SRC_V_MEM] = "V_MEM";
-    this->source_name[ML_SRC_V_TAPE] = "V_TAPE";
-    this->source_name[0x16] = "DVD_2";
-    this->source_name[0x16] = "V_TAPE2";
-    this->source_name[0x1F] = "SAT";
-    this->source_name[0x1F] = "DTV";
-    this->source_name[0x29] = "DVD";
-    this->source_name[0x33] = "DTV_2";
-    this->source_name[0x33] = "V_AUX";
-    this->source_name[0x3E] = "V_AUX2";
-    this->source_name[0x3E] = "DOORCAM";
-    this->source_name[ML_SRC_PC] = "PC";
-    this->source_name[0x6F] = "RADIO";
-    this->source_name[0x79] = "A_MEM";
-    this->source_name[0x79] = "A_TAPE";
-    this->source_name[0x7A] = "A_MEM2";
-    this->source_name[0x8D] = "CD";
-    this->source_name[0x97] = "A_AUX";
-    this->source_name[0xA1] = "N_RADIO";
-    this->source_name[ML_SRC_PHONO] = "PHONO";
 
     this->device = new PC2USBDevice;
     this->mixer = new PC2Mixer(this->device);
@@ -87,25 +66,6 @@ void PC2::process_beo4_keycode(uint8_t type, uint8_t keycode) {
 
     this->interface->beo4_press(keycode);
 }
-void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
-    this->state.volume = tgram[3] & 0x7f;
-    this->state.loudness = tgram[3] & 0x80;
-    this->state.bass = (int8_t)tgram[4];
-    this->state.treble = (int8_t)tgram[5];
-    this->state.balance = (int8_t)tgram[6];
-    BOOST_LOG_TRIVIAL(debug) << "Got mixer state from PC2:" << \
-        " vol:" << this->state.volume << \
-        " bass:" << this->state.bass << \
-        " trbl:" << this->state.treble << \
-        " bal:" << this->state.balance << \
-        " ldns: " << (this->state.loudness ? "on" : "off");
-};
-
-void PC2Mixer::process_headphone_state(PC2Telegram & tgram) {
-    bool plugged_in = (tgram[3] == 0x01) ? true: false;
-    this->state.headphones_plugged_in = plugged_in;
-    BOOST_LOG_TRIVIAL(debug) << "Headphones are " << (plugged_in ? "" : "not ") << "plugged in";
-};
 
 void PC2::process_telegram(PC2Telegram & tgram) {
     if (tgram[2] == 0x00) {

@@ -1,6 +1,7 @@
 #include "pc2/pc2.hpp"
 #include "pc2/pc2device.hpp"
 
+/*
 class MasterlinkSource {
 public:
 	uint8_t id;
@@ -11,3 +12,4 @@ public:
 
 	MasterlinkSource(PC2 *pc2);
 };
+*/

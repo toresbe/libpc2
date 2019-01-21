@@ -109,3 +109,23 @@ void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint
 
     this->device->send_telegram({ 0xe3, vol_byte, bass, treble, balance });
 }
+
+void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {
+    this->state.volume = tgram[3] & 0x7f;
+    this->state.loudness = tgram[3] & 0x80;
+    this->state.bass = (int8_t)tgram[4];
+    this->state.treble = (int8_t)tgram[5];
+    this->state.balance = (int8_t)tgram[6];
+    BOOST_LOG_TRIVIAL(debug) << "Got mixer state from PC2:" << \
+        " vol:" << this->state.volume << \
+        " bass:" << this->state.bass << \
+        " trbl:" << this->state.treble << \
+        " bal:" << this->state.balance << \
+        " ldns: " << (this->state.loudness ? "on" : "off");
+};
+
+void PC2Mixer::process_headphone_state(PC2Telegram & tgram) {
+    bool plugged_in = (tgram[3] == 0x01) ? true: false;
+    this->state.headphones_plugged_in = plugged_in;
+    BOOST_LOG_TRIVIAL(debug) << "Headphones are " << (plugged_in ? "" : "not ") << "plugged in";
+};

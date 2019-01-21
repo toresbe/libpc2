@@ -13,6 +13,7 @@
 #include "pc2/pc2.hpp"
 
 void PC2::process_ml_telegram(PC2Telegram & tgram) {
+    Masterlink ml;
     MasterlinkTelegram mlt(tgram);
     for (auto c : tgram) {
         printf(" %02X", c);
@@ -64,8 +65,8 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
         case(0x82):
             {
                 std::string source_name;
-                if(this->source_name.count(tgram[14])) {
-                    source_name = this->source_name[tgram[14]];
+                if(ml.source_name.count((Masterlink::source)tgram[14])) {
+                    source_name = ml.source_name[(Masterlink::source)tgram[14]];
                 } else {
                     source_name = "unknown source";
                 }
