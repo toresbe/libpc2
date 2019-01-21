@@ -40,6 +40,7 @@ class PC2 {
     PC2USBDevice *device;
     PC2Mixer *mixer;
     PC2(PC2Interface * interface);
+    void send_telegram(MasterlinkTelegram &tgram);
     void yield();
     void yield(std::string description);
     void set_address_filter();
@@ -49,6 +50,7 @@ class PC2 {
     void init();
     bool open();
     void process_ml_telegram(PC2Telegram & tgram);
+    void handle_ml_request(MasterlinkTelegram & mlt);
     void send_beo4_code(uint8_t dest, uint8_t code);
     void process_beo4_keycode(uint8_t type, uint8_t keycode);
     void process_telegram(PC2Telegram & tgram);

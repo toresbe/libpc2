@@ -12,6 +12,11 @@
 #include "pc2/mixer.hpp"
 #include "pc2/beo4.hpp"
 
+void PC2::send_telegram(MasterlinkTelegram &tgram) {
+    PC2Message msg;
+    msg = tgram.serialize();
+}
+
 PC2::PC2(PC2Interface * interface) {
     this->interface = interface;
     this->interface->pc2 = this;

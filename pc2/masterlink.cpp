@@ -12,6 +12,23 @@
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 
+void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
+    if(mlt.payload_type == mlt.payload_types::master_present) {
+        BOOST_LOG_TRIVIAL(info) << "Master present request seen";
+
+        MasterPresentTelegram request(mlt);
+        MasterPresentTelegram reply;
+
+        reply.telegram_type = MasterlinkTelegram::telegram_types::status;
+        reply.dest_node = request.src_node;
+        reply.payload_version = 4;
+
+        // no idea what these bytes signify
+        reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
+        this->send_telegram(reply);
+    }
+};
+
 void PC2::process_ml_telegram(PC2Telegram & tgram) {
     Masterlink ml;
     MasterlinkTelegram mlt(tgram);
@@ -20,6 +37,7 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
     }
     printf(".\n");
     TelegramPrinter::print(mlt);
+
     if(this->interface->address_mask == PC2Interface::address_masks::promisc) {
         if(mlt.dest_node == 0xc0) {
             BOOST_LOG_TRIVIAL(debug) << "Not processing packet addressed to V_MASTER";
@@ -27,6 +45,13 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
         }
     }
 
+    switch(mlt.telegram_type) {
+        case(mlt.telegram_types::request):
+            handle_ml_request(mlt);
+    };
+
+
+    /*
     switch (tgram[10]) {
         case(0x04):
             {
@@ -144,5 +169,6 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
             break;
     }
 
+    */
 
 };

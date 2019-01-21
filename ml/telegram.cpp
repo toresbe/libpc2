@@ -7,6 +7,38 @@
 #include "pc2/pc2.hpp"
 #include "ml/telegram.hpp"
 
+MasterlinkTelegram::MasterlinkTelegram() {
+    this->data = std::vector<uint8_t>();
+};
+
+uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
+    uint8_t checksum;
+
+    for(auto byte: data) {
+        checksum += byte;
+    }
+
+    return checksum;
+};
+
+PC2Message MasterlinkTelegram::serialize() {
+    this->data = std::vector<uint8_t>();
+    this->data.push_back(this->dest_node);
+    this->data.push_back(this->src_node);
+    this->data.push_back(0x01); // SOH
+    this->data.push_back(this->telegram_type);
+    this->data.push_back(this->dest_src);
+    this->data.push_back(this->src_src);
+    this->data.push_back(0x00); // Spare
+    this->data.push_back(this->payload_type);
+    this->data.push_back((uint8_t) this->payload.size());
+    this->data.push_back((uint8_t) this->payload_version);
+    this->data.insert(this->data.end(), this->payload.begin(), this->payload.end());
+    this->data.push_back(checksum(this->data));
+    this->data.push_back(0x00); // Spare
+    return PC2Telegram(this->data);
+}
+
 MasterlinkTelegram::MasterlinkTelegram(PC2Telegram & tgram) {
     assert(tgram[0] == 0x60); // A PC2 telegram always starts with 0x60
     //assert(tgram[2] == 0x00); // A Masterlink telegram always starts with 0x00
@@ -14,21 +46,21 @@ MasterlinkTelegram::MasterlinkTelegram(PC2Telegram & tgram) {
     std::vector<uint8_t>::const_iterator first = tgram.begin() + 2;
     std::vector<uint8_t>::const_iterator last = tgram.end() - 1;
     this->data = std::vector<uint8_t>(first, last);
-    // strip off checksum and EOT
-    first = tgram.begin() + 13;
-    last = tgram.end() - 1;
-    this->payload = std::vector<uint8_t>(first, last);
-
     this->dest_node = this->data[1];
     this->src_node = this->data[2];
     this->telegram_type = (telegram_types)this->data[4];
+    this->src_src = this->data[6];
+    this->dest_src = this->data[7];
     this->payload_type = (payload_types)this->data[8];
     this->payload_size = this->data[9];
     this->payload_version = this->data[10];
+
+    first = tgram.begin() + 13;
+    this->payload = std::vector<uint8_t>(first, first + payload_size);
 };
 
 
-std::ostream& DisplayDataMessage::serialize(std::ostream& outputStream) {
+std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
     int i = 0;
@@ -71,7 +103,7 @@ std::ostream& DisplayDataMessage::serialize(std::ostream& outputStream) {
     return outputStream << analysis;
 };
 
-std::ostream& MasterPresentMessage::serialize(std::ostream& outputStream) {
+std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
     int i = 0 ;
@@ -83,13 +115,13 @@ std::ostream& MasterPresentMessage::serialize(std::ostream& outputStream) {
     return outputStream << analysis;
 }
 
-std::ostream& UnknownMessage::serialize(std::ostream& outputStream) {
+std::ostream& UnknownMessage::debug_repr(std::ostream& outputStream) {
     return outputStream << "Unknown message";
 }
 
 class MetadataMessage: public DecodedMessage {
     public:
-        std::ostream& serialize(std::ostream& outputStream) {
+        std::ostream& debug_repr(std::ostream& outputStream) {
             return outputStream << "Metadata message: " << this->key << ": \"" << this->value << "\"";
         }
 
@@ -169,7 +201,7 @@ class MetadataMessage: public DecodedMessage {
 };
 
 std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m) {
-    m.serialize(outputStream);
+    m.debug_repr(outputStream);
     return outputStream;
 };
 
@@ -180,7 +212,7 @@ DecodedMessage *DecodedMessageFactory::make(MasterlinkTelegram & tgram) {
         case MasterlinkTelegram::payload_types::display_data:
             return new DisplayDataMessage(tgram);
         case MasterlinkTelegram::payload_types::master_present:
-            return new MasterPresentMessage(tgram);
+            return new MasterPresentTelegram(tgram);
         default:
             return new UnknownMessage(tgram);
     }

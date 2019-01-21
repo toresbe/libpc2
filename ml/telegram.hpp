@@ -128,20 +128,25 @@ class MasterlinkTelegram {
             {config, "CONFIG"},
         };
 
+        PC2Message serialize();
         std::vector<uint8_t> data;
         std::vector<uint8_t> payload;
         uint8_t dest_node;
+        uint8_t dest_src; // some telegrams are addressed to a node's specific source ID
         uint8_t src_node;
+        uint8_t src_src; // some telegrams have a specific source ID
         enum payload_types payload_type;
         unsigned int payload_size;
         unsigned int payload_version;
         enum telegram_types telegram_type;
 
+        uint8_t checksum(std::vector<uint8_t> data);
         MasterlinkTelegram(PC2Telegram & tgram);
+        MasterlinkTelegram();
 };
 class DecodedMessage {
     public:
-        virtual std::ostream& serialize(std::ostream& outputStream) = 0;
+        virtual std::ostream& debug_repr(std::ostream& outputStream) = 0;
         friend std::ostream& operator <<(std::ostream& outputStream, const DecodedMessage& m);
         MasterlinkTelegram tgram;
         DecodedMessage(MasterlinkTelegram & tgram): tgram{tgram} { };
@@ -149,12 +154,12 @@ class DecodedMessage {
 class UnknownMessage: public DecodedMessage {
     public:
         UnknownMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} {};
-        std::ostream& serialize(std::ostream& outputStream);
+        std::ostream& debug_repr(std::ostream& outputStream);
 };
 class DisplayDataMessage: public DecodedMessage {
     public:
         DisplayDataMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} { }
-        std::ostream& serialize(std::ostream& outputStream);
+        std::ostream& debug_repr(std::ostream& outputStream);
 };
 
 class DecodedMessageFactory {
@@ -163,9 +168,10 @@ class DecodedMessageFactory {
 };
 std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m);
 
-class MasterPresentMessage: public DecodedMessage {
+class MasterPresentTelegram: public MasterlinkTelegram, public DecodedMessage {
     public:
-        MasterPresentMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} { }
-        std::ostream& serialize(std::ostream& outputStream);
+        MasterPresentTelegram(MasterlinkTelegram & tgram): DecodedMessage{tgram} { };
+        MasterPresentTelegram();
+        std::ostream& debug_repr(std::ostream& outputStream);
 };
 #endif
