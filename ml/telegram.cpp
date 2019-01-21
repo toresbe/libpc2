@@ -11,6 +11,10 @@ MasterlinkTelegram::MasterlinkTelegram() {
     this->data = std::vector<uint8_t>();
 };
 
+MasterPresentTelegram::MasterPresentTelegram(): DecodedMessage{} {
+    this->data = std::vector<uint8_t>();
+}
+
 uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
     uint8_t checksum;
 
@@ -25,7 +29,7 @@ PC2Message MasterlinkTelegram::serialize() {
     this->data = std::vector<uint8_t>();
     this->data.push_back(this->dest_node);
     this->data.push_back(this->src_node);
-    this->data.push_back(0x01); // SOH
+    this->data.push_back(0x01); // SOT
     this->data.push_back(this->telegram_type);
     this->data.push_back(this->dest_src);
     this->data.push_back(this->src_src);
@@ -35,7 +39,7 @@ PC2Message MasterlinkTelegram::serialize() {
     this->data.push_back((uint8_t) this->payload_version);
     this->data.insert(this->data.end(), this->payload.begin(), this->payload.end());
     this->data.push_back(checksum(this->data));
-    this->data.push_back(0x00); // Spare
+    this->data.push_back(0x00); // EOT
     return PC2Telegram(this->data);
 }
 

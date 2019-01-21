@@ -21,10 +21,13 @@ void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
 
         reply.telegram_type = MasterlinkTelegram::telegram_types::status;
         reply.dest_node = request.src_node;
+        // FIXME: I should be smarter about where this comes from
+        reply.src_node = request.dest_node;
         reply.payload_version = 4;
 
         // no idea what these bytes signify
         reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
+
         this->send_telegram(reply);
     }
 };

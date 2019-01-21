@@ -131,13 +131,13 @@ class MasterlinkTelegram {
         PC2Message serialize();
         std::vector<uint8_t> data;
         std::vector<uint8_t> payload;
-        uint8_t dest_node;
-        uint8_t dest_src; // some telegrams are addressed to a node's specific source ID
-        uint8_t src_node;
-        uint8_t src_src; // some telegrams have a specific source ID
+        uint8_t dest_node = 0;
+        uint8_t dest_src = 0; // some telegrams are addressed to a node's specific source ID
+        uint8_t src_node = 0;
+        uint8_t src_src = 0; // some telegrams have a specific source ID
         enum payload_types payload_type;
-        unsigned int payload_size;
-        unsigned int payload_version;
+        unsigned int payload_size = 0;
+        unsigned int payload_version = 0;
         enum telegram_types telegram_type;
 
         uint8_t checksum(std::vector<uint8_t> data);
@@ -150,6 +150,7 @@ class DecodedMessage {
         friend std::ostream& operator <<(std::ostream& outputStream, const DecodedMessage& m);
         MasterlinkTelegram tgram;
         DecodedMessage(MasterlinkTelegram & tgram): tgram{tgram} { };
+        DecodedMessage(): tgram{} { };
 };
 class UnknownMessage: public DecodedMessage {
     public:
