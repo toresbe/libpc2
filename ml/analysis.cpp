@@ -88,6 +88,10 @@ std::string format_field(const DecodedTelegram &tgram, debug_field field) {
     }
 };
 
+std::ostream& TrackInfoTelegram::debug_repr(std::ostream& outputStream) {
+    return generic_debug_repr(outputStream, this);
+}
+
 std::ostream& StatusInfoMessage::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
