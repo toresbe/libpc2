@@ -9,7 +9,7 @@
 // TODO: convert to iostreams?
 
 void TelegramPrinter::print_heading() {
-    std::string format_string = "\x1b[48;5;69m\x1b[97m\t%|=79s|\x1b[0m\n";
+    std::string format_string = "\x1b[48;5;69;97m%|=79s|\x1b[0m\n";
     std::cout << boost::str(boost::format(format_string) % "Masterlink telegram");
     std::cout << ((boost::format(header_fmt) % "src" % "dest" % "tgram type" % "payload type" % "pld size" % "pld ver")).str() + "\n";
 }
@@ -25,10 +25,9 @@ void TelegramPrinter::print_header(MasterlinkTelegram & tgram) {
     std::cout << formatted.str() << "\n";
 }
 
-
 void TelegramPrinter::print(MasterlinkTelegram & tgram) {
     print_heading();
     print_header(tgram);
-    MasterlinkTelegram * m = DecodedTelegramFactory::make(tgram);
+    DecodedTelegram * m = DecodedTelegramFactory::make(tgram);
     std::cout << *m << std::endl;
 };
