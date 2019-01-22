@@ -157,7 +157,7 @@ void PC2::set_address_filter() {
             return;
         case PC2Interface::address_masks::beoport:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
-            this->device->send_telegram({ 0xf6, 0x00, 0x01 });
+            this->device->send_telegram({ 0xf6, 0x00, 0x82, 0x80, 0x83 });
             return;
         case PC2Interface::address_masks::promisc:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
@@ -202,7 +202,7 @@ void PC2::init() {
     yield("Software version");
     //this->mixer->transmit_locally(true);
     //this->mixer->speaker_power(true);
-    //	this->device->send_telegram({ 0x29 }); // Requests software version?
+    this->device->send_telegram({ 0x29 }); // Requests software version?
     // sends an ACK-ish message (60 05 49 02 36 01 04 61); then another (60 02 0A 01 61).
     set_address_filter();
     //this->device->send_telegram({0xe0, 0xC1, 0xC0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x02, 0x04, 0x02, 0x01});
@@ -212,14 +212,14 @@ void PC2::init() {
     //	                          0x00, 0x03, 0x01, 0x01, 0x01, 0x03, 0x00, 0x02, \
     //	                          0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, \
     //	                          0x00, 0x00, 0x7d, 0x00 }); */
-    //yield();
-    //yield();
+    yield();
+    yield();
     //broadcast_timestamp();
-    //yield();
-    //yield();
+    yield();
+    yield();
     //this->mixer->ml_distribute(false);
 
-    //this->device->send_telegram({ 0x26 }); // get status info (PC2 will send a 06 00/01 to say if HP are in)
+    this->device->send_telegram({ 0x26 }); // get status info (PC2 will send a 06 00/01 to say if HP are in)
     //// Check if a video master is present?
     //this->device->send_telegram({ 0xe0,0xc0,0xc1,0x01,0x0b,0x00,0x00,0x00,0x04,0x03,0x04,0x01,0x02,0x00,0x9b,0x00 });
     //expect_ack();
@@ -227,7 +227,6 @@ void PC2::init() {
     //// Some sort of status message or alive message, addressed at video master
     //this->device->send_telegram({ 0xe0,0xc0,0x01,0x01,0x0b,0x00,0x00,0x00,0x04,0x01,0x17,0x01,0xea,0x00 });
     //yield();
-    //this->device->send_telegram({ 0xf9, 0x80 });
 
     //        send_beo4_code(0xc0, 0x91);
     //this->mixer->speaker_power(false);

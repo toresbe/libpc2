@@ -15,7 +15,12 @@ GotoSourceTelegram::GotoSourceTelegram() {
     this->data = std::vector<uint8_t>();
 }
 
-MasterPresentTelegram::MasterPresentTelegram(): DecodedMessage{} {
+MasterPresentTelegram::MasterPresentTelegram(): MasterlinkTelegram{} {
+    this->data = std::vector<uint8_t>();
+    this->payload_type = MasterlinkTelegram::payload_types::master_present;
+}
+
+AudioBusTelegram::AudioBusTelegram(): MasterlinkTelegram{} {
     this->data = std::vector<uint8_t>();
     this->payload_type = MasterlinkTelegram::payload_types::master_present;
 }
@@ -76,7 +81,7 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     int i = 0;
     bool surprises = false;
 
-    if(this->tgram.payload_size != 17) {
+    if(this->payload.size() != 17) {
         analysis.append("Unexpected length of display data!\n");
     }
 
@@ -89,7 +94,7 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     };
 
     while(i < expectations.size()) {
-        if(this->tgram.payload[i] != expectations[i].second) {
+        if(this->payload[i] != expectations[i].second) {
             if(expectations[i].first) {
                 surprises = true;
                 analysis.append("Found unexpected data!\n");
@@ -101,14 +106,14 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
         i = 0;
         while(i < expectations.size()) {
             analysis.append((boost::format("%02X: %02X (expected %02X)\n") % i \
-                        % (unsigned int)this->tgram.payload[i] \
+                        % (unsigned int)this->payload[i] \
                         % (unsigned int)expectations[i].second).str());
             i++;
         }
     }
 
     analysis.append("Display data: [");
-    analysis.append(std::string(this->tgram.payload.begin() + 5, this->tgram.payload.end() - 2));
+    analysis.append(std::string(this->payload.begin() + 5, this->payload.end() - 2));
     analysis.append("]");
     return outputStream << analysis;
 };
@@ -117,19 +122,15 @@ std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
     int i = 0 ;
-    while(i < this->tgram.payload_size) {
-        analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->tgram.payload[i]).str());
+    while(i < this->payload_size) {
+        analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->payload[i]).str());
         i++;
     }
 
     return outputStream << analysis;
 }
 
-std::ostream& UnknownMessage::debug_repr(std::ostream& outputStream) {
-    return outputStream << "Unknown message";
-}
-
-class MetadataMessage: public DecodedMessage {
+class MetadataMessage: public MasterlinkTelegram {
     public:
         std::ostream& debug_repr(std::ostream& outputStream) {
             return outputStream << "Metadata message: " << this->key << ": \"" << this->value << "\"";
@@ -161,7 +162,7 @@ class MetadataMessage: public DecodedMessage {
                 // Do we expect a specific value?
                 if(this->expectations[i].first) {
                     // Is it the value we're expecting?
-                    if(this->tgram.payload[i] != this->expectations[i].second) {
+                    if(this->payload[i] != this->expectations[i].second) {
                         anything_unexpected = true;
                         analysis.append("\x1b[91m");
                         analysis.append(boost::str(boost::format("Expected %02X") % this->expectations[i].second));
@@ -172,7 +173,7 @@ class MetadataMessage: public DecodedMessage {
                     analysis.append("\x1b[93m");
                 }
 
-                analysis.append(boost::str(boost::format("\t%02d: %02X [%s]\x1b[0m\n") % i % this->tgram.payload[i] % labels[i]));
+                analysis.append(boost::str(boost::format("\t%02d: %02X [%s]\x1b[0m\n") % i % this->payload[i] % labels[i]));
                 i++;
             }
             if (anything_unexpected)
@@ -202,7 +203,7 @@ class MetadataMessage: public DecodedMessage {
         std::string key;
         std::string value;
 
-        MetadataMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} {
+        MetadataMessage(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} {
             this->key = metadata_field_type_label[tgram.payload[0]];
             this->value = std::string(tgram.payload.begin() + 14, tgram.payload.end());
             // FIXME: Is this an appropriate constant?
@@ -210,12 +211,12 @@ class MetadataMessage: public DecodedMessage {
         }
 };
 
-std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m) {
+std::ostream& operator <<(std::ostream& outputStream, MasterlinkTelegram& m) {
     m.debug_repr(outputStream);
     return outputStream;
 };
 
-DecodedMessage *DecodedMessageFactory::make(MasterlinkTelegram & tgram) {
+MasterlinkTelegram *DecodedTelegramFactory::make(MasterlinkTelegram & tgram) {
     switch (tgram.payload_type) {
         case MasterlinkTelegram::payload_types::metadata:
             return new MetadataMessage(tgram);

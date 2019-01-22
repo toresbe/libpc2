@@ -13,6 +13,18 @@ std::string payload_format(int byte, std::string input) {
     return boost::str(boost::format(format_string) % byte % input);
 };
 
+std::ostream& MasterlinkTelegram::debug_repr(std::ostream& outputStream) {
+    std::string analysis;
+    analysis += payload_header("");
+    int i = 0;
+    for(auto x: this->payload) {
+        analysis += payload_format(i++, boost::str(boost::format("%|02X|") % \
+                    (unsigned int) x));
+    }
+    outputStream << analysis;
+    return outputStream;
+};
+
 std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis; 
     analysis += payload_header("");
@@ -24,3 +36,7 @@ std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
     outputStream << analysis;
     return outputStream;
 };
+
+// new dump format
+// {num_bytes, data_type, expected_value_policy, comment}
+// expected_value_policy = std::pair<policy enum, std::vector<uint8_t, n>>

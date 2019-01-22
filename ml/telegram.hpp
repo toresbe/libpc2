@@ -85,13 +85,14 @@ class MasterlinkTelegram {
             display_data = 0x06,
             metadata = 0x0b,
             goto_source = 0x45,
+            audio_bus = 0x08,
         };
 
         std::map<uint8_t, std::string> payload_type_name = {
             {payload_types::master_present, "MASTER_PRESENT"},
             {0x05, "???"},
             {payload_types::display_data, "DISPLAY_DATA"},
-            {0x08, "???"},
+            {payload_types::audio_bus, "AUDIO_BUS"},
             {payload_types::metadata, "METADATA"},
             {0x0d, "BEO4_KEY"},
             {0x10, "STANDBY"},
@@ -144,43 +145,51 @@ class MasterlinkTelegram {
         uint8_t checksum(std::vector<uint8_t> data);
         MasterlinkTelegram(PC2Telegram & tgram);
         MasterlinkTelegram();
+        std::ostream& debug_repr(std::ostream& outputStream);
+        friend std::ostream& operator <<(std::ostream& outputStream, const MasterlinkTelegram& m);
 };
+
 class DecodedMessage {
     public:
-        virtual std::ostream& debug_repr(std::ostream& outputStream) = 0;
-        friend std::ostream& operator <<(std::ostream& outputStream, const DecodedMessage& m);
         MasterlinkTelegram tgram;
         DecodedMessage(MasterlinkTelegram & tgram): tgram{tgram} { };
         DecodedMessage(): tgram{} { };
 };
-class UnknownMessage: public DecodedMessage {
+
+class UnknownMessage: public MasterlinkTelegram {
     public:
-        UnknownMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} {};
-        std::ostream& debug_repr(std::ostream& outputStream);
+        UnknownMessage(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} {};
 };
 
-class GotoSourceTelegram: public MasterlinkTelegram, public DecodedMessage {
+class GotoSourceTelegram: public MasterlinkTelegram {
     public:
-        GotoSourceTelegram(MasterlinkTelegram & tgram): DecodedMessage{tgram}, MasterlinkTelegram{tgram} { };
+        GotoSourceTelegram(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} { };
         std::ostream& debug_repr(std::ostream& outputStream);
         GotoSourceTelegram();
 };
 
-class DisplayDataMessage: public DecodedMessage {
+class DisplayDataMessage: public MasterlinkTelegram {
     public:
-        DisplayDataMessage(MasterlinkTelegram & tgram): DecodedMessage{tgram} { }
+        DisplayDataMessage(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} { }
         std::ostream& debug_repr(std::ostream& outputStream);
 };
 
-class DecodedMessageFactory {
+class DecodedTelegramFactory {
     public:
-        static DecodedMessage *make(MasterlinkTelegram & tgram);
+        static MasterlinkTelegram *make(MasterlinkTelegram & tgram);
 };
-std::ostream& operator <<(std::ostream& outputStream, DecodedMessage& m);
+std::ostream& operator <<(std::ostream& outputStream, MasterlinkTelegram& m);
 
-class MasterPresentTelegram: public MasterlinkTelegram, public DecodedMessage {
+class AudioBusTelegram: public MasterlinkTelegram {
     public:
-        MasterPresentTelegram(MasterlinkTelegram & tgram): DecodedMessage{tgram} { };
+        AudioBusTelegram(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} { };
+        AudioBusTelegram();
+        std::ostream& debug_repr(std::ostream& outputStream);
+};
+
+class MasterPresentTelegram: public MasterlinkTelegram {
+    public:
+        MasterPresentTelegram(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} { };
         MasterPresentTelegram();
         std::ostream& debug_repr(std::ostream& outputStream);
 };

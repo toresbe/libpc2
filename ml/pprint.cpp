@@ -29,6 +29,6 @@ void TelegramPrinter::print_header(MasterlinkTelegram & tgram) {
 void TelegramPrinter::print(MasterlinkTelegram & tgram) {
     print_heading();
     print_header(tgram);
-    DecodedMessage * m = DecodedMessageFactory::make(tgram);
+    MasterlinkTelegram * m = DecodedTelegramFactory::make(tgram);
     std::cout << *m << std::endl;
 };
