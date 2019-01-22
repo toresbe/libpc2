@@ -23,11 +23,12 @@ void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
         if(decoded_telegram.tgram_meaning == GotoSourceTelegram::tgram_meanings::request_source) {
             // check if video master is present
             // if present, check if casting
-            // start playing
             StatusInfoMessage reply(decoded_telegram.requested_source);
             reply.src_node = decoded_telegram.dest_node;
             reply.dest_node = decoded_telegram.src_node;
             this->send_telegram(reply);
+            // start playing
+            this->mixer->ml_distribute(true);
         }
     }
 };
