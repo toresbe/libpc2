@@ -44,8 +44,8 @@ class PcapngReader {
     public:
     bool eof = false;
 
-    PcapngReader() {
-        packetfile = fopen("testfile.pcapng", "r");
+    PcapngReader(std::string filespec) {
+        packetfile = fopen(filespec.c_str(), "r");
     }
 
     std::vector<uint8_t> get_next_packet() {
@@ -98,8 +98,9 @@ class PcapngReader {
     }
 };
 
-int main() {
-    PcapngReader r;
+int main(int argc, char *argv[]) {
+    assert(argc==2);
+    PcapngReader r(argv[1]);
     std::vector<uint8_t> reassembly_buffer;
     unsigned int bytes_left_to_reassemble;
     while (!r.eof) {
