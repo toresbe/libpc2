@@ -15,20 +15,18 @@
 void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
     if(mlt.payload_type == mlt.payload_types::master_present) {
         BOOST_LOG_TRIVIAL(info) << "Master present request seen";
-
-        MasterPresentTelegram request(mlt);
-        MasterPresentTelegram reply;
-
-        reply.telegram_type = MasterlinkTelegram::telegram_types::status;
-        reply.dest_node = mlt.src_node;
-        // FIXME: I should be smarter about where this comes from
-        reply.src_node = mlt.dest_node;
-        reply.payload_version = 4;
-
-        // no idea what these bytes signify
-        reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
-
+        MasterPresentTelegram reply = MasterPresentTelegram::reply_from_request(mlt);
         this->send_telegram(reply);
+    } else if (mlt.payload_type == mlt.payload_types::goto_source) {
+        BOOST_LOG_TRIVIAL(info) << "Source goto request seen";
+        GotoSourceTelegram decoded_telegram(mlt);
+        if(decoded_telegram.tgram_meaning == GotoSourceTelegram::tgram_meanings::request_source) {
+            // check if video master is present
+            // if present, check if casting
+            // start playing
+            StatusInfoMessage reply(decoded_telegram.requested_source);
+            this->send_telegram(reply);
+        }
     }
 };
 

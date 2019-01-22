@@ -14,10 +14,45 @@ MasterlinkTelegram::MasterlinkTelegram() {
 DecodedTelegram::DecodedTelegram(): MasterlinkTelegram{} {
 };
 
+MasterPresentTelegram MasterPresentTelegram::reply_from_request(const MasterPresentTelegram &request) {
+    MasterPresentTelegram reply;
+
+    reply.telegram_type = MasterlinkTelegram::telegram_types::status;
+    reply.dest_node = request.src_node;
+    // FIXME: I should be smarter about where this comes from
+    reply.src_node = request.dest_node;
+    reply.payload_version = 4;
+
+    // no idea what these bytes signify
+    reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
+    return reply;
+}
+
 MasterPresentTelegram::MasterPresentTelegram() {
     this->payload_type = MasterlinkTelegram::payload_types::master_present;
 }
 
+GotoSourceTelegram::GotoSourceTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
+    this->payload_type = MasterlinkTelegram::payload_types::goto_source;
+
+    if(this->telegram_type == telegram_types::request) {
+        if(this->payload.size() == 7 && this->payload_version == 1) {
+            this->tgram_meaning = request_source;
+            this->requested_source = this->payload[1];
+        }
+    }
+}
+
+StatusInfoMessage::StatusInfoMessage(uint8_t source_id) {
+    this->telegram_type = telegram_types::status;
+    this->payload_type = MasterlinkTelegram::payload_types::status_info;
+    this->payload_version = 4;
+    this->payload = { \
+            source_id, 0x01, 0x00, 0x00, 0x1F, 0xBE, 0x01, 0x00, \
+            0x00, 0x00, 0xFF, 0x02, 0x01, 0x00, 0x03, 0x01, \
+            0x01, 0x01, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, \
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+}
 
 AudioBusTelegram::AudioBusTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
     this->payload_type = MasterlinkTelegram::payload_types::audio_bus;
@@ -84,31 +119,7 @@ MasterlinkTelegram::MasterlinkTelegram(PC2Telegram & tgram) {
     this->payload = std::vector<uint8_t>(first, first + payload_size);
 };
 
-class MetadataMessage: public DecodedTelegram {
-    public:
-        std::ostream& debug_repr(std::ostream& outputStream) {
-            return outputStream << "Metadata message: " << this->key << ": \"" << this->value << "\"";
-        }
-
-        payload_labels_t labels = {"Field type ID", "??", "??", "??", "Metadata type: N_RADIO or A_MEM2", "??", "??", "??", "??", "??", "??", "??", "??", "??"};
-        payload_expectations_t expectations = {
-            {false, 0},
-            {true, 0},
-            {true, 1},
-            {true, 1},
-            {false, 0}, // Metadata message type? If radio, gives 1A (ML SRC N_RADIO), if A MEM gives 7A (A_MEM2)
-            {true, 5},
-            {true, 0},
-            {true, 0},
-            {true, 0},
-            {true, 0xFF},
-            {true, 0},
-            {true, 0xFF},
-            {true, 0},
-            {true, 1},
-        };
-
-        bool any_surprises_here() {
+        bool MetadataMessage::any_surprises_here() {
             unsigned int i = 0;
             std::string analysis = "";
             bool anything_unexpected = false;
@@ -134,36 +145,12 @@ class MetadataMessage: public DecodedTelegram {
                 std::cout << analysis;
         };
 
-        enum metadata_message_type {
-            amem = 0x7a,
-            radio = 0xa1
-        };
-
-        enum metadata_field_type {
-            genre = 0x01,
-            album = 0x02,
-            artist = 0x03,
-            track = 0x04,
-        };
-
-        std::map<uint8_t, std::string> metadata_field_type_label {
-            {0x01, "genre"},
-                {0x02, "album"},
-                {0x03, "artist"},
-                {0x04, "track"},
-        };
-
-        Masterlink::source src;
-        std::string key;
-        std::string value;
-
-        MetadataMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
-            this->key = metadata_field_type_label[tgram.payload[0]];
-            this->value = std::string(tgram.payload.begin() + 14, tgram.payload.end());
-            // FIXME: Is this an appropriate constant?
-            this->src = Masterlink::source::a_mem2;
-        }
-};
+MetadataMessage::MetadataMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
+    this->key = metadata_field_type_label[tgram.payload[0]];
+    this->value = std::string(tgram.payload.begin() + 14, tgram.payload.end());
+    // FIXME: Is this an appropriate constant?
+    this->src = Masterlink::source::a_mem2;
+}
 
 std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram& m) {
     m.debug_repr(outputStream);

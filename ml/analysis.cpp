@@ -24,16 +24,20 @@ std::string payload_format(unsigned int start_byte, unsigned int n_bytes, std::s
     }
 };
 
-std::ostream& UnknownTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& generic_debug_repr(std::ostream& outputStream, const MasterlinkTelegram *tgram) {
     std::string analysis;
     analysis += payload_header("Unknown telegram, payload");
     int i = 0;
-    for(auto x: this->payload) {
+    for(auto x: tgram->payload) {
         analysis += payload_format(i++, 1, boost::str(boost::format("%|02X|") % \
                     (unsigned int) x));
     }
     outputStream << analysis;
     return outputStream;
+};
+
+std::ostream& UnknownTelegram::debug_repr(std::ostream& outputStream) {
+    return generic_debug_repr(outputStream, this);
 };
 
 enum field_type {
@@ -83,6 +87,10 @@ std::string format_field(const DecodedTelegram &tgram, debug_field field) {
                     % field.comment));
     }
 };
+
+std::ostream& StatusInfoMessage::debug_repr(std::ostream& outputStream) {
+    return generic_debug_repr(outputStream, this);
+}
 
 std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;
@@ -148,26 +156,23 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
 
     debug_field_list fields; 
     if(this->payload.size() != 17) {
-        analysis.append("Unexpected length of display data!\n");
+        analysis += payload_header("Display data telegram");
+        analysis += payload_warning("Unexpected length of telegram!");
     } else {
+        analysis += payload_header("Display data: [" + std::string(this->payload.begin() + 5, this->payload.end() - 2) + "]");
         fields = {
-            {0, 1, hexbyte, "Unknown"},
-            {1, 1, hexbyte, "Unknown"},
-            {2, 1, hexbyte, "Unknown"},
-            {3, 1, hexbyte, "Unknown"},
-            {4, 1, hexbyte, "Unknown"},
+            {0, 1, hexbyte, "Unknown (Always 0x03)"},
+            {1, 1, hexbyte, "Unknown (0x01 or 0x02)"},
+            {2, 1, hexbyte, "Unknown (Always 0x01)"},
+            {3, 1, hexbyte, "Unknown (Always 0x00)"},
+            {4, 1, hexbyte, "Unknown (Always 0x00)"},
             {5, 12, fixed_width_ascii, "Display data"},
         };
     }
-    analysis += payload_header("Display data: [" + std::string(this->payload.begin() + 5, this->payload.end() - 2) + "]");
 
     for(auto x: fields) {
         analysis += format_field(*this, x);
     }
-    //for(auto x: this->payload) {
-    //    analysis += payload_format(i++, 1, boost::str(boost::format("%|02X|") % \
-    //                (unsigned int) x));
-    //}
 
     std::vector<std::pair<bool, uint8_t>> expectations = {
         {true, 0x03},
@@ -198,6 +203,10 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
 
     return outputStream << analysis;
 };
+
+std::ostream& MetadataMessage::debug_repr(std::ostream& outputStream) {
+    return outputStream << "Metadata message: " << this->key << ": \"" << this->value << "\"";
+}
 
 std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;

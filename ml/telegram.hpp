@@ -86,6 +86,7 @@ class MasterlinkTelegram {
             metadata = 0x0b,
             goto_source = 0x45,
             audio_bus = 0x08,
+            status_info = 0x87,
         };
 
         std::map<uint8_t, std::string> payload_type_name = {
@@ -107,7 +108,7 @@ class MasterlinkTelegram {
             {0x5c, "???"},
             {0x6c, "DISTRIBUTION_REQUEST"},
             {0x82, "TRACK_INFO_LONG"},
-            {0x87, "STATUS_INFO"},
+            {payload_types::status_info, "STATUS_INFO"},
             {0x94, "DVD_STATUS_INFO"},
             {0x96, "PC_PRESENT"},
         };
@@ -163,9 +164,22 @@ class UnknownTelegram: public DecodedTelegram {
 
 class GotoSourceTelegram: public DecodedTelegram {
     public:
-        GotoSourceTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { };
+        enum tgram_meanings {
+            unknown,
+            request_source,
+        } tgram_meanings;
+        uint8_t requested_source;
+        enum tgram_meanings tgram_meaning;
+        GotoSourceTelegram(MasterlinkTelegram & tgram);
         std::ostream& debug_repr(std::ostream& outputStream);
         GotoSourceTelegram();
+};
+
+class StatusInfoMessage: public DecodedTelegram {
+    public:
+        StatusInfoMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+        StatusInfoMessage(uint8_t source_id); //generates boilerplate reply telegram for a source
+        std::ostream& debug_repr(std::ostream& outputStream);
 };
 
 class DisplayDataMessage: public DecodedTelegram {
@@ -191,10 +205,59 @@ class AudioBusTelegram: public DecodedTelegram {
 
 class MasterPresentTelegram: public DecodedTelegram {
     public:
+        static MasterPresentTelegram reply_from_request(const MasterPresentTelegram & tgram);
         MasterPresentTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { };
         MasterPresentTelegram();
         std::ostream& debug_repr(std::ostream& outputStream);
 };
+
+class MetadataMessage: public DecodedTelegram {
+    public:
+        std::ostream& debug_repr(std::ostream& outputStream);
+        payload_labels_t labels = {"Field type ID", "??", "??", "??", "Metadata type: N_RADIO or A_MEM2", "??", "??", "??", "??", "??", "??", "??", "??", "??"};
+        payload_expectations_t expectations = {
+            {false, 0},
+            {true, 0},
+            {true, 1},
+            {true, 1},
+            {false, 0}, // Metadata message type? If radio, gives 1A (ML SRC N_RADIO), if A MEM gives 7A (A_MEM2)
+            {true, 5},
+            {true, 0},
+            {true, 0},
+            {true, 0},
+            {true, 0xFF},
+            {true, 0},
+            {true, 0xFF},
+            {true, 0},
+            {true, 1},
+        };
+        enum metadata_message_type {
+            amem = 0x7a,
+            radio = 0xa1
+        };
+
+        MetadataMessage(MasterlinkTelegram & tgram);
+        bool any_surprises_here();
+        enum metadata_field_type {
+            genre = 0x01,
+            album = 0x02,
+            artist = 0x03,
+            track = 0x04,
+        };
+
+        std::map<uint8_t, std::string> metadata_field_type_label {
+            {0x01, "genre"},
+                {0x02, "album"},
+                {0x03, "artist"},
+                {0x04, "track"},
+        };
+
+        Masterlink::source src;
+        std::string key;
+        std::string value;
+
+};
+
 
 class DecodedTelegramFactory {
     public:
