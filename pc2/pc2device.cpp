@@ -1,6 +1,7 @@
 // Code for the PC2 USB device
 #include "pc2/pc2device.hpp"
 #include "ml/telegram.hpp"
+#include "ml/pprint.hpp"
 
 #include <boost/log/trivial.hpp>
 #include <iostream>
@@ -87,11 +88,6 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 	telegram.push_back(0x61);
 	std::string debug_message = "Sent:";
 
-        if(telegram[2] == 0xe0) {
-            MasterlinkTelegram foo = telegram;
-            DecodedTelegram *mlt = DecodedTelegramFactory::make(foo);
-            std::cout << *mlt;
-        }
 	
 	for (auto &x : telegram) {
 		debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
@@ -99,6 +95,10 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 
 	BOOST_LOG_TRIVIAL(debug) << debug_message;
 
+        if(telegram[2] == 0xe0) {
+            MasterlinkTelegram foo = telegram;
+            TelegramPrinter::print(foo);
+        }
 	int actual_length;
 	int r = libusb_interrupt_transfer(this->pc2_handle, 0x01, (unsigned char *)telegram.data(), telegram.size(), &actual_length, 0);
 	assert(r == 0);
