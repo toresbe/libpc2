@@ -87,6 +87,7 @@ class MasterlinkTelegram {
             goto_source = 0x45,
             audio_bus = 0x08,
             status_info = 0x87,
+            track_info = 0x44,
         };
 
         std::map<uint8_t, std::string> payload_type_name = {
@@ -103,7 +104,7 @@ class MasterlinkTelegram {
             {0x30, "???"},
             {0x3c, "TIMER"},
             {0x40, "CLOCK"},
-            {0x44, "TRACK_INFO"},
+            {payload_types::track_info, "TRACK_INFO"},
             {payload_types::goto_source, "GOTO_SOURCE"},
             {0x5c, "???"},
             {0x6c, "DISTRIBUTION_REQUEST"},
@@ -173,6 +174,13 @@ class GotoSourceTelegram: public DecodedTelegram {
         GotoSourceTelegram(MasterlinkTelegram & tgram);
         std::ostream& debug_repr(std::ostream& outputStream);
         GotoSourceTelegram();
+};
+
+class TrackInfoTelegram: public DecodedTelegram {
+    public:
+        TrackInfoTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+        TrackInfoTelegram(uint8_t source_id); //generates boilerplate reply telegram for a source
+        std::ostream& debug_repr(std::ostream& outputStream);
 };
 
 class StatusInfoMessage: public DecodedTelegram {

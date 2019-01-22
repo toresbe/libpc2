@@ -25,8 +25,13 @@ void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
             // if present, check if casting
             StatusInfoMessage reply(decoded_telegram.requested_source);
             reply.src_node = decoded_telegram.dest_node;
-            reply.dest_node = decoded_telegram.src_node;
+            reply.dest_node = 0x83;
             this->send_telegram(reply);
+            TrackInfoTelegram track_reply(decoded_telegram.requested_source);
+            track_reply.src_node = decoded_telegram.dest_node;
+            track_reply.dest_node = decoded_telegram.src_node;
+            this->send_telegram(track_reply);
+
             // start playing
             this->mixer->ml_distribute(true);
         }
