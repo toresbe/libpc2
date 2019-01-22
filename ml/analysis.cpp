@@ -16,7 +16,7 @@ std::string payload_warning(std::string input) {
 
 std::string payload_format(unsigned int start_byte, unsigned int n_bytes, std::string explanation) {
     if(n_bytes > 1) {
-        std::string format_string = "\x1b[48;5;99m\x1b[97m  [%|02X|:%|02X|] \x1b [0m%|-74s|\n";
+        std::string format_string = "\x1b[48;5;99m\x1b[97m  [%|02X|:%|02X|] \x1b[0m%|-74s|\n";
         return boost::str(boost::format(format_string) % start_byte % (start_byte + n_bytes) % explanation);
     } else if(n_bytes == 1) {
         std::string format_string = "\x1b[48;5;99m\x1b[97m     [%|02X|] \x1b[0m %|-74s|\n";
@@ -57,6 +57,13 @@ std::string format_field(const DecodedTelegram &tgram, debug_field field) {
         assert(field.length == 1);
         return payload_format(field.offset, 1, boost::str(boost::format("%|02X|\t\t\t%||") % \
                     (unsigned int) tgram.payload[field.offset] % field.comment));
+    } else if(field.type == fixed_width_ascii) {
+        std::string ascii_field = std::string( \
+                tgram.payload.begin() + field.offset, \
+                tgram.payload.begin() + field.offset + field.length);
+        return payload_format(field.offset, field.length, boost::str(boost::format("[%||]\t%||") % \
+                    ascii_field % \
+                    field.comment));
     } else if(field.type == ml_source) {
         assert(field.length == 1);
         uint8_t source_id = tgram.payload[field.offset];
@@ -85,12 +92,22 @@ std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
         analysis += payload_header("Audio Bus status inquiry telegram");
     else if (this->tgram_meaning == status_distributing) {
         analysis += payload_header("Audio Bus status reply: Currently distributing");
-        fields = {
-            {0, 1, hexbyte, "Unknown"},
-            {1, 1, hexbyte, "Unknown"},
-            {2, 1, hexbyte, "Unknown"},
-            {3, 1, ml_source, "Currently playing source"}
-        };
+        if(this->payload.size() == 4) {
+            fields = {
+                {0, 1, hexbyte, "Unknown"},
+                {1, 1, hexbyte, "Unknown"},
+                {2, 1, hexbyte, "Unknown"},
+                {3, 1, ml_source, "Currently playing source"}
+            };
+        } else if(this->payload.size() == 5) {
+            fields = {
+                {0, 1, hexbyte, "Unknown"},
+                {1, 1, hexbyte, "Unknown"},
+                {2, 1, hexbyte, "Unknown"},
+                {3, 1, ml_source, "Currently playing source"},
+                {4, 1, hexbyte, "Unknown"},
+            };
+        }
     } else if (this->tgram_meaning == status_not_distributing) {
         analysis += payload_header("Audio Bus status reply: No bus activity");
     } else if (this->tgram_meaning == status_not_distributing) {
@@ -99,6 +116,11 @@ std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
 
     int i = 0;
 
+    if(!fields.size()) {
+        for (auto x: this->payload) {
+            fields.push_back({(unsigned int)fields.size(), 1, hexbyte, "Unknown"});
+        }
+    }
     for(auto x: fields) {
         analysis += format_field(*this, x);
     }
@@ -124,15 +146,28 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     int i = 0;
     bool surprises = false;
 
+    debug_field_list fields; 
     if(this->payload.size() != 17) {
         analysis.append("Unexpected length of display data!\n");
+    } else {
+        fields = {
+            {0, 1, hexbyte, "Unknown"},
+            {1, 1, hexbyte, "Unknown"},
+            {2, 1, hexbyte, "Unknown"},
+            {3, 1, hexbyte, "Unknown"},
+            {4, 1, hexbyte, "Unknown"},
+            {5, 12, fixed_width_ascii, "Display data"},
+        };
     }
-    analysis += payload_warning("Display data: [" + std::string(this->payload.begin() + 5, this->payload.end() - 2) + "]");
+    analysis += payload_header("Display data: [" + std::string(this->payload.begin() + 5, this->payload.end() - 2) + "]");
 
-    for(auto x: this->payload) {
-        analysis += payload_format(i++, 1, boost::str(boost::format("%|02X|") % \
-                    (unsigned int) x));
+    for(auto x: fields) {
+        analysis += format_field(*this, x);
     }
+    //for(auto x: this->payload) {
+    //    analysis += payload_format(i++, 1, boost::str(boost::format("%|02X|") % \
+    //                (unsigned int) x));
+    //}
 
     std::vector<std::pair<bool, uint8_t>> expectations = {
         {true, 0x03},

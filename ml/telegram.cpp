@@ -27,7 +27,7 @@ AudioBusTelegram::AudioBusTelegram(MasterlinkTelegram & tgram): DecodedTelegram{
             this->tgram_meaning = request_status;
         }
     } else if (this->telegram_type == telegram_types::status) {
-        if(this->payload.size() == 4 && this->payload_version == 6) {
+        if(this->payload_version == 6) {
             this->tgram_meaning = status_distributing;
         } else if(!this->payload.size() && (this->payload_version == 4)) {
             this->tgram_meaning = status_not_distributing;
