@@ -99,7 +99,7 @@ PC2Message MasterlinkTelegram::serialize() {
     return PC2Telegram(this->data);
 }
 
-MasterlinkTelegram::MasterlinkTelegram(PC2Telegram & tgram) {
+MasterlinkTelegram::MasterlinkTelegram(const PC2Telegram & tgram) {
     assert(tgram[0] == 0x60); // A PC2 telegram always starts with 0x60
     //assert(tgram[2] == 0x00); // A Masterlink telegram always starts with 0x00
 

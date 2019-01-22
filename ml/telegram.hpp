@@ -144,7 +144,7 @@ class MasterlinkTelegram {
         enum telegram_types telegram_type;
 
         uint8_t checksum(std::vector<uint8_t> data);
-        MasterlinkTelegram(PC2Telegram & tgram);
+        MasterlinkTelegram(const PC2Telegram & tgram);
         MasterlinkTelegram();
 };
 
