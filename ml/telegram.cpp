@@ -50,8 +50,9 @@ TrackInfoTelegram::TrackInfoTelegram(uint8_t source_id) {
     this->payload = { 0x02, source_id, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00 };
 }
 
-StatusInfoMessage::StatusInfoMessage(uint8_t source_id) {
+StatusInfoTelegram::StatusInfoTelegram(uint8_t source_id) {
     this->telegram_type = telegram_types::status;
+    this->dest_node = 0x83;
     this->payload_type = MasterlinkTelegram::payload_types::status_info;
     this->payload_version = 4;
     this->payload = { \
@@ -150,6 +151,7 @@ MasterlinkTelegram::MasterlinkTelegram(const PC2Telegram & tgram) {
             }
             if (anything_unexpected)
                 std::cout << analysis;
+            return anything_unexpected;
         };
 
 MetadataMessage::MetadataMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {

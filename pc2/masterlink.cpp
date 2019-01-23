@@ -19,20 +19,21 @@ void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
         this->send_telegram(reply);
     } else if (mlt.payload_type == mlt.payload_types::goto_source) {
         BOOST_LOG_TRIVIAL(info) << "Source goto request seen";
-        GotoSourceTelegram decoded_telegram(mlt);
-        if(decoded_telegram.tgram_meaning == GotoSourceTelegram::tgram_meanings::request_source) {
-            // check if video master is present
-            // if present, check if casting
-            StatusInfoMessage reply(decoded_telegram.requested_source);
-            reply.src_node = decoded_telegram.dest_node;
-            reply.dest_node = 0x83;
+        GotoSourceTelegram goto_source(mlt);
+        if(goto_source.tgram_meaning == GotoSourceTelegram::tgram_meanings::request_source) {
+            // TODO: check if video master is present
+            // TODO: if present, check if casting
+            // TODO: if casting, ask to cease and desist
+            StatusInfoTelegram reply(goto_source.requested_source);
+            reply.src_node = goto_source.dest_node;
             this->send_telegram(reply);
-            TrackInfoTelegram track_reply(decoded_telegram.requested_source);
-            track_reply.src_node = decoded_telegram.dest_node;
-            track_reply.dest_node = decoded_telegram.src_node;
+
+            TrackInfoTelegram track_reply(goto_source.requested_source);
+            track_reply.src_node = goto_source.dest_node;
+            track_reply.dest_node = goto_source.src_node;
             this->send_telegram(track_reply);
 
-            // start playing
+            // TODO: Signal interface that a source has been requested
             this->mixer->ml_distribute(true);
         }
     }
@@ -57,6 +58,8 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
     switch(mlt.telegram_type) {
         case(mlt.telegram_types::request):
             handle_ml_request(mlt);
+        default:
+            BOOST_LOG_TRIVIAL(warning) << "So far I can only handle request telegrams";
     };
 
 

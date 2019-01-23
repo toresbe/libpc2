@@ -74,6 +74,7 @@ bool PC2USBDevice::open() {
 	}
 	else {
 		BOOST_LOG_TRIVIAL(info) << "Opened PC2 device";
+                return true;
 	}
 }
 
@@ -102,7 +103,8 @@ bool PC2USBDevice::send_telegram(const PC2Message &message) {
 	int actual_length;
 	int r = libusb_interrupt_transfer(this->pc2_handle, 0x01, (unsigned char *)telegram.data(), telegram.size(), &actual_length, 0);
 	assert(r == 0);
-	assert(actual_length == telegram.size());
+        assert(actual_length >= 0);
+	assert((unsigned int)actual_length == telegram.size());
 	return true;
 }
 void PC2USBDevice::reset() {
@@ -114,7 +116,6 @@ PC2Telegram PC2USBDevice::get_data(int timeout) {
 	// so FIXME: prepare for that eventuality!
 	uint8_t buffer[512];
 	PC2Message msg;
-	int i = 0;
 	bool eot = false;
 	int actual_length;
 	while (!eot) {

@@ -18,7 +18,7 @@ std::string payload_format(unsigned int start_byte, unsigned int n_bytes, std::s
     if(n_bytes > 1) {
         std::string format_string = "\x1b[48;5;99m\x1b[97m  [%|02X|:%|02X|] \x1b[0m%|-74s|\n";
         return boost::str(boost::format(format_string) % start_byte % (start_byte + n_bytes) % explanation);
-    } else if(n_bytes == 1) {
+    } else {
         std::string format_string = "\x1b[48;5;99m\x1b[97m     [%|02X|] \x1b[0m %|-74s|\n";
         return boost::str(boost::format(format_string) % start_byte % explanation);
     }
@@ -85,21 +85,21 @@ std::string format_field(const DecodedTelegram &tgram, debug_field field) {
                     boost::format(fmt_string) % \
                     (unsigned int) source_id % source_name \
                     % field.comment));
-    }
+    } else 
+        return "Unsupported field type!";
 };
 
 std::ostream& TrackInfoTelegram::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
 
-std::ostream& StatusInfoMessage::debug_repr(std::ostream& outputStream) {
+std::ostream& StatusInfoTelegram::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
 
 std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;
-    debug_field_list fields; 
-    bool no_idea = false;
+    debug_field_list fields;
     if(this->tgram_meaning == request_status)
         analysis += payload_header("Audio Bus status inquiry telegram");
     else if (this->tgram_meaning == status_distributing) {
@@ -126,10 +126,10 @@ std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
         analysis += payload_warning("Unknown Audio Bus telegram");
     };
 
-    int i = 0;
+    unsigned int i = 0;
 
     if(!fields.size()) {
-        for (auto x: this->payload) {
+        while (i++ < this->payload.size()) {
             fields.push_back({(unsigned int)fields.size(), 1, hexbyte, "Unknown"});
         }
     }
@@ -141,7 +141,7 @@ std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
 };
 
 std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
-    std::string analysis; 
+    std::string analysis;
     analysis += payload_header("");
     int i = 0;
     for(auto x: this->payload) {
@@ -155,10 +155,10 @@ std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
 std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
-    int i = 0;
+    unsigned int i = 0;
     bool surprises = false;
 
-    debug_field_list fields; 
+    debug_field_list fields;
     if(this->payload.size() != 17) {
         analysis += payload_header("Display data telegram");
         analysis += payload_warning("Unexpected length of telegram!");
@@ -215,7 +215,7 @@ std::ostream& MetadataMessage::debug_repr(std::ostream& outputStream) {
 std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
-    int i = 0 ;
+    unsigned int i = 0 ;
     while(i < this->payload_size) {
         analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->payload[i]).str());
         i++;

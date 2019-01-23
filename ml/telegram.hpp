@@ -183,10 +183,10 @@ class TrackInfoTelegram: public DecodedTelegram {
         std::ostream& debug_repr(std::ostream& outputStream);
 };
 
-class StatusInfoMessage: public DecodedTelegram {
+class StatusInfoTelegram: public DecodedTelegram {
     public:
-        StatusInfoMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
-        StatusInfoMessage(uint8_t source_id); //generates boilerplate reply telegram for a source
+        StatusInfoTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+        StatusInfoTelegram(uint8_t source_id); //generates boilerplate reply telegram for a source
         std::ostream& debug_repr(std::ostream& outputStream);
 };
 
