@@ -1,3 +1,7 @@
+#include <list>
+#include <memory>
+#include <exception>
+#include <future>
 #include <cstdio>
 #include <ctime>
 #include <string>
@@ -11,6 +15,64 @@
 #include "ml/pprint.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
+
+static bool is_response_to(MasterlinkTelegram &incoming_tgram, MasterlinkTelegram &waiting_tgram) {
+    // If...
+    // 1) the payload type matches the request's,
+    if(incoming_tgram.payload_type != waiting_tgram.payload_type) return false;
+    //BOOST_LOG_TRIVIAL(debug) << "Payload type matches.";
+    // 2) the telegram destination node matches the request's source,
+    if(incoming_tgram.dest_node != waiting_tgram.src_node) return false;
+    //BOOST_LOG_TRIVIAL(debug) << "Payload node matches.";
+    // 3) the incoming tgram is of type status (TODO: this should be resolved through typing)
+    if(incoming_tgram.telegram_type != MasterlinkTelegram::telegram_types::status) return false;
+    //BOOST_LOG_TRIVIAL(debug) << "Telegram type matches.";
+    // ...then return true
+    return true;
+};
+
+void PC2::handle_ml_status(MasterlinkTelegram &mlt) {
+    BOOST_LOG_TRIVIAL(info) << "Handling status telegram";
+    for (auto x: this->pending_request_queue) {
+        if(is_response_to(mlt, *x->first)) {
+            pending_request_queue.remove(x);
+            BOOST_LOG_TRIVIAL(info) << "Found waiting telegram request!";
+            x->second->set_value(mlt);
+            return;
+        }
+    }
+    BOOST_LOG_TRIVIAL(info) << "Did not find waiting telegram request!";
+};
+
+std::shared_future<MasterlinkTelegram> PC2::send_request(std::shared_ptr<MasterlinkTelegram> tgram) {
+    auto promised_reply = std::make_shared<std::promise<MasterlinkTelegram>>();
+    pending_request_t * request = new pending_request_t(tgram, promised_reply);
+    this->pending_request_queue.push_back(request);
+    this->send_telegram(*tgram);
+    return promised_reply->get_future();
+};
+
+MasterlinkTelegram PC2::interrogate(MasterlinkTelegram & tgram) {
+    auto future = send_request(std::make_shared<MasterlinkTelegram>(tgram));
+    int i = 0;
+    // FIXME: I'm faking threaded code flow here; disaster waiting to happen
+    while (i++ <= 5) {
+        this->yield();
+    }
+    // TODO: Determine precise timeout used by B&O audio masters
+    auto retval = future.wait_for(std::chrono::milliseconds(10));
+    if(retval == std::future_status::timeout) {
+        BOOST_LOG_TRIVIAL(info) << "Timeout waiting for telegram!";
+        throw TelegramRequestTimeout();
+    } else if (retval == std::future_status::ready) {
+        try {
+            return future.get();
+        } catch (const std::future_error& e) {
+            BOOST_LOG_TRIVIAL(error) << "Caught a future_error with code \"" << e.code()
+                << "\"\nMessage: \"" << e.what() << "\"\n";
+        }
+    }
+}
 
 void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
     if(mlt.payload_type == mlt.payload_types::master_present) {
@@ -58,6 +120,10 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
     switch(mlt.telegram_type) {
         case(mlt.telegram_types::request):
             handle_ml_request(mlt);
+            break;
+        case(mlt.telegram_types::status):
+            handle_ml_status(mlt);
+            break;
         default:
             BOOST_LOG_TRIVIAL(warning) << "So far I can only handle request telegrams";
     };
@@ -154,8 +220,8 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
             printf("| Time is: %02X:%02X:%02X on 20%02X-%02X-%02X.\n", tgram[16], tgram[17], tgram[18], tgram[22], tgram[21], tgram[20]);
             break;
         case(0x44):
-            // So, I don't know what this telegram type actually means yet or how to decode it, however I have observed it in 
-            // contexts where audio bus ownership is handed from one device to another. Erring on the side of caution I've decided 
+            // So, I don't know what this telegram type actually means yet or how to decode it, however I have observed it in
+            // contexts where audio bus ownership is handed from one device to another. Erring on the side of caution I've decided
             // to just cut the feed if this should ever occur (it's not in any "supported" configuration for this code).
             //BOOST_LOG_TRIVIAL(warning) << "Disabling audio output because we got a 0x44 telegram and I don't know what that means (see code)";
             //this->mixer->ml_distribute(false);
