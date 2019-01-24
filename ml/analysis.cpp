@@ -213,15 +213,7 @@ std::ostream& MetadataMessage::debug_repr(std::ostream& outputStream) {
 }
 
 std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
-    std::string analysis;
-
-    unsigned int i = 0 ;
-    while(i < this->payload_size) {
-        analysis.append((boost::format("%02X: %02X\n") % i % (unsigned int)this->payload[i]).str());
-        i++;
-    }
-
-    return outputStream << analysis;
+    return generic_debug_repr(outputStream, this);
 }
 
 // new dump format
