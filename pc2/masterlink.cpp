@@ -57,7 +57,9 @@ MasterlinkTelegram PC2::interrogate(MasterlinkTelegram & tgram) {
     int i = 0;
     // FIXME: I'm faking threaded code flow here; disaster waiting to happen
     while (i++ <= 5) {
-        this->yield();
+        this->yield(); // will wait 200 milliseconds
+        if(future.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready)
+            break;
     }
     // TODO: Determine precise timeout used by B&O audio masters
     auto retval = future.wait_for(std::chrono::milliseconds(10));
