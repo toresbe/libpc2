@@ -31,7 +31,7 @@ static bool is_response_to(MasterlinkTelegram &incoming_tgram, MasterlinkTelegra
     return true;
 };
 
-void PC2::handle_ml_status(MasterlinkTelegram &mlt) {
+void PC2Beolink::handle_ml_status(MasterlinkTelegram &mlt) {
     BOOST_LOG_TRIVIAL(info) << "Handling status telegram";
     for (auto x: this->pending_request_queue) {
         if(is_response_to(mlt, *x->first)) {
@@ -44,7 +44,7 @@ void PC2::handle_ml_status(MasterlinkTelegram &mlt) {
     BOOST_LOG_TRIVIAL(info) << "Did not find waiting telegram request!";
 };
 
-std::shared_future<MasterlinkTelegram> PC2::send_request(std::shared_ptr<MasterlinkTelegram> tgram) {
+std::shared_future<MasterlinkTelegram> PC2Beolink::send_request(std::shared_ptr<MasterlinkTelegram> tgram) {
     auto promised_reply = std::make_shared<std::promise<MasterlinkTelegram>>();
     pending_request_t * request = new pending_request_t(tgram, promised_reply);
     this->pending_request_queue.push_back(request);
@@ -52,7 +52,7 @@ std::shared_future<MasterlinkTelegram> PC2::send_request(std::shared_ptr<Masterl
     return promised_reply->get_future();
 };
 
-MasterlinkTelegram PC2::interrogate(MasterlinkTelegram & tgram) {
+MasterlinkTelegram PC2Beolink::interrogate(MasterlinkTelegram & tgram) {
     auto future = send_request(std::make_shared<MasterlinkTelegram>(tgram));
     int i = 0;
     // FIXME: I'm faking threaded code flow here; disaster waiting to happen
@@ -76,34 +76,35 @@ MasterlinkTelegram PC2::interrogate(MasterlinkTelegram & tgram) {
     }
 }
 
-void PC2::handle_ml_request(MasterlinkTelegram & mlt) {
+void PC2Beolink::handle_ml_request(MasterlinkTelegram & mlt) {
     if(mlt.payload_type == mlt.payload_types::master_present) {
         BOOST_LOG_TRIVIAL(info) << "Master present request seen";
-        MasterPresentTelegram reply = MasterPresentTelegram::reply_from_request(mlt);
+        DecodedTelegram::MasterPresent reply = DecodedTelegram::MasterPresent::reply_from_request(mlt);
         this->send_telegram(reply);
     } else if (mlt.payload_type == mlt.payload_types::goto_source) {
         BOOST_LOG_TRIVIAL(info) << "Source goto request seen";
-        GotoSourceTelegram goto_source(mlt);
-        if(goto_source.tgram_meaning == GotoSourceTelegram::tgram_meanings::request_source) {
+        DecodedTelegram::GotoSource goto_source(mlt);
+        if(goto_source.tgram_meaning == DecodedTelegram::GotoSource::tgram_meanings::request_source) {
             // TODO: check if video master is present
             // TODO: if present, check if casting
             // TODO: if casting, ask to cease and desist
-            StatusInfoTelegram reply(goto_source.requested_source);
+            DecodedTelegram::StatusInfo reply(goto_source.requested_source);
             reply.src_node = goto_source.dest_node;
             this->send_telegram(reply);
 
-            TrackInfoTelegram track_reply(goto_source.requested_source);
+            DecodedTelegram::TrackInfo track_reply(goto_source.requested_source);
             track_reply.src_node = goto_source.dest_node;
             track_reply.dest_node = goto_source.src_node;
             this->send_telegram(track_reply);
 
             // TODO: Signal interface that a source has been requested
-            this->mixer->ml_distribute(true);
+            //this->pc2->mixer->ml_distribute(true);
+            BOOST_LOG_TRIVIAL(error) << "Not distributing on ML because rewrite pending!";
         }
     }
 };
 
-void PC2::process_ml_telegram(PC2Telegram & tgram) {
+void PC2Beolink::process_ml_telegram(PC2Telegram & tgram) {
     Masterlink ml;
     MasterlinkTelegram mlt(tgram);
     for (auto c : tgram) {
@@ -112,7 +113,7 @@ void PC2::process_ml_telegram(PC2Telegram & tgram) {
     printf(".\n");
     TelegramPrinter::print(mlt);
 
-    if(this->interface->address_mask == PC2Interface::address_masks::promisc) {
+    if(this->pc2->interface->address_mask == PC2Interface::address_mask_t::promisc) {
         if(mlt.dest_node == 0xc0) {
             BOOST_LOG_TRIVIAL(debug) << "Not processing packet addressed to V_MASTER";
             return;

@@ -215,6 +215,33 @@ std::ostream& MetadataMessage::debug_repr(std::ostream& outputStream) {
 std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
+bool Metadata::any_surprises_here() {
+    unsigned int i = 0;
+    std::string analysis = "";
+    bool anything_unexpected = false;
+    while(i < 14) {
+        // Do we expect a specific value?
+        if(this->expectations[i].first) {
+            // Is it the value we're expecting?
+            if(this->payload[i] != this->expectations[i].second) {
+                anything_unexpected = true;
+                analysis.append("\x1b[91m");
+                analysis.append(boost::str(boost::format("Expected %02X") % this->expectations[i].second));
+            } else {
+                analysis.append("\x1b[92m");
+            }
+        } else {
+            analysis.append("\x1b[93m");
+        }
+
+        analysis.append(boost::str(boost::format("\t%02d: %02X [%s]\x1b[0m\n") % i % this->payload[i] % labels[i]));
+        i++;
+    }
+    if (anything_unexpected)
+        std::cout << analysis;
+    return anything_unexpected;
+};
+
 
 // new dump format
 // {num_bytes, data_type, expected_value_policy, comment}

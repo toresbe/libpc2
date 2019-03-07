@@ -11,73 +11,102 @@ MasterlinkTelegram::MasterlinkTelegram() {
     this->data = std::vector<uint8_t>();
 };
 
-DecodedTelegram::DecodedTelegram(): MasterlinkTelegram{} {
-};
+namespace DecodedTelegram {
+    DecodedTelegram::DecodedTelegram(): MasterlinkTelegram{} {
+    };
 
-MasterPresentTelegram MasterPresentTelegram::reply_from_request(const MasterPresentTelegram &request) {
-    MasterPresentTelegram reply;
+    MasterPresent MasterPresent::reply_from_request(const MasterPresent &request) {
+        MasterPresent reply;
 
-    reply.telegram_type = MasterlinkTelegram::telegram_types::status;
-    reply.dest_node = request.src_node;
-    // FIXME: I should be smarter about where this comes from
-    reply.src_node = request.dest_node;
-    reply.payload_version = 4;
+        reply.telegram_type = MasterlinkTelegram::telegram_types::status;
+        reply.dest_node = request.src_node;
+        // FIXME: I should be smarter about where this comes from
+        reply.src_node = request.dest_node;
+        reply.payload_version = 4;
 
-    // no idea what these bytes signify
-    reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
-    return reply;
-}
+        // no idea what these bytes signify
+        reply.payload = std::vector<uint8_t> {0x01, 0x01, 0x01};
+        return reply;
+    }
 
-MasterPresentTelegram::MasterPresentTelegram() {
-    this->payload_type = MasterlinkTelegram::payload_types::master_present;
-}
+    MasterPresent::MasterPresent() {
+        this->payload_type = MasterlinkTelegram::payload_types::master_present;
+    }
 
-GotoSourceTelegram::GotoSourceTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
-    this->payload_type = MasterlinkTelegram::payload_types::goto_source;
+    GotoSource::GotoSource(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
+        this->payload_type = MasterlinkTelegram::payload_types::goto_source;
 
-    if(this->telegram_type == telegram_types::request) {
-        if(this->payload.size() == 7 && this->payload_version == 1) {
-            this->tgram_meaning = request_source;
-            this->requested_source = this->payload[1];
+        if(this->telegram_type == telegram_types::request) {
+            if(this->payload.size() == 7 && this->payload_version == 1) {
+                this->tgram_meaning = request_source;
+                this->requested_source = this->payload[1];
+            }
         }
     }
-}
 
-TrackInfoTelegram::TrackInfoTelegram(uint8_t source_id) {
-    this->telegram_type = telegram_types::status;
-    this->payload_type = MasterlinkTelegram::payload_types::track_info;
-    this->payload_version = 5;
-    this->payload = { 0x02, source_id, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00 };
-}
+    TrackInfo::TrackInfo(uint8_t source_id) {
+        this->telegram_type = telegram_types::status;
+        this->payload_type = MasterlinkTelegram::payload_types::track_info;
+        this->payload_version = 5;
+        this->payload = { 0x02, source_id, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00 };
+    }
 
-StatusInfoTelegram::StatusInfoTelegram(uint8_t source_id) {
-    this->telegram_type = telegram_types::status;
-    this->dest_node = 0x83;
-    this->payload_type = MasterlinkTelegram::payload_types::status_info;
-    this->payload_version = 4;
-    this->payload = { \
+    StatusInfo::StatusInfo(uint8_t source_id) {
+        this->telegram_type = telegram_types::status;
+        this->dest_node = 0x83;
+        this->payload_type = MasterlinkTelegram::payload_types::status_info;
+        this->payload_version = 4;
+        this->payload = { \
             source_id, 0x01, 0x00, 0x00, 0x1F, 0xBE, 0x01, 0x00, \
-            0x00, 0x00, 0xFF, 0x02, 0x01, 0x00, 0x03, 0x01, \
-            0x01, 0x01, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, \
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
-}
+                0x00, 0x00, 0xFF, 0x02, 0x01, 0x00, 0x03, 0x01, \
+                0x01, 0x01, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, \
+                0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+    }
 
-AudioBusTelegram::AudioBusTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
-    this->payload_type = MasterlinkTelegram::payload_types::audio_bus;
-    this->tgram_meaning = unknown;
-    if(this->telegram_type == telegram_types::request) {
-        if(!this->payload.size() && (this->payload_version == 1)) {
-            this->tgram_meaning = request_status;
+    AudioBus::AudioBus(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
+        this->payload_type = MasterlinkTelegram::payload_types::audio_bus;
+        this->tgram_meaning = unknown;
+        if(this->telegram_type == telegram_types::request) {
+            if(!this->payload.size() && (this->payload_version == 1)) {
+                this->tgram_meaning = request_status;
+            }
+        } else if (this->telegram_type == telegram_types::status) {
+            if(this->payload_version == 6) {
+                this->tgram_meaning = status_distributing;
+            } else if(!this->payload.size() && (this->payload_version == 4)) {
+                this->tgram_meaning = status_not_distributing;
+            }
         }
-    } else if (this->telegram_type == telegram_types::status) {
-        if(this->payload_version == 6) {
-            this->tgram_meaning = status_distributing;
-        } else if(!this->payload.size() && (this->payload_version == 4)) {
-            this->tgram_meaning = status_not_distributing;
+    }
+    Metadata::Metadata(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
+        this->key = metadata_field_type_label[tgram.payload[0]];
+        this->value = std::string(tgram.payload.begin() + 14, tgram.payload.end());
+        // FIXME: Is this an appropriate constant?
+        this->src = Masterlink::source::a_mem2;
+    }
+
+    std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram& m) {
+        m.debug_repr(outputStream);
+        return outputStream;
+    };
+
+    DecodedTelegram *DecodedTelegramFactory::make(MasterlinkTelegram & tgram) {
+        switch (tgram.payload_type) {
+            case MasterlinkTelegram::payload_types::metadata:
+                return new Metadata(tgram);
+            case MasterlinkTelegram::payload_types::display_data:
+                return new DisplayData(tgram);
+            case MasterlinkTelegram::payload_types::audio_bus:
+                return new AudioBus(tgram);
+            case MasterlinkTelegram::payload_types::goto_source:
+                return new GotoSource(tgram);
+            case MasterlinkTelegram::payload_types::master_present:
+                return new MasterPresent(tgram);
+            default:
+                return new UnknownTelegram(tgram);
         }
     }
 }
-
 uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
     uint8_t checksum;
 
@@ -127,58 +156,3 @@ MasterlinkTelegram::MasterlinkTelegram(const PC2Telegram & tgram) {
     this->payload = std::vector<uint8_t>(first, first + payload_size);
 };
 
-        bool MetadataMessage::any_surprises_here() {
-            unsigned int i = 0;
-            std::string analysis = "";
-            bool anything_unexpected = false;
-            while(i < 14) {
-                // Do we expect a specific value?
-                if(this->expectations[i].first) {
-                    // Is it the value we're expecting?
-                    if(this->payload[i] != this->expectations[i].second) {
-                        anything_unexpected = true;
-                        analysis.append("\x1b[91m");
-                        analysis.append(boost::str(boost::format("Expected %02X") % this->expectations[i].second));
-                    } else {
-                        analysis.append("\x1b[92m");
-                    }
-                } else {
-                    analysis.append("\x1b[93m");
-                }
-
-                analysis.append(boost::str(boost::format("\t%02d: %02X [%s]\x1b[0m\n") % i % this->payload[i] % labels[i]));
-                i++;
-            }
-            if (anything_unexpected)
-                std::cout << analysis;
-            return anything_unexpected;
-        };
-
-MetadataMessage::MetadataMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {
-    this->key = metadata_field_type_label[tgram.payload[0]];
-    this->value = std::string(tgram.payload.begin() + 14, tgram.payload.end());
-    // FIXME: Is this an appropriate constant?
-    this->src = Masterlink::source::a_mem2;
-}
-
-std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram& m) {
-    m.debug_repr(outputStream);
-    return outputStream;
-};
-
-DecodedTelegram *DecodedTelegramFactory::make(MasterlinkTelegram & tgram) {
-    switch (tgram.payload_type) {
-        case MasterlinkTelegram::payload_types::metadata:
-            return new MetadataMessage(tgram);
-        case MasterlinkTelegram::payload_types::display_data:
-            return new DisplayDataMessage(tgram);
-        case MasterlinkTelegram::payload_types::audio_bus:
-            return new AudioBusTelegram(tgram);
-        case MasterlinkTelegram::payload_types::goto_source:
-            return new GotoSourceTelegram(tgram);
-        case MasterlinkTelegram::payload_types::master_present:
-            return new MasterPresentTelegram(tgram);
-        default:
-            return new UnknownTelegram(tgram);
-    }
-}
