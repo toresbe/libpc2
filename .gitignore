@@ -46,4 +46,5 @@ CMakeLists.txt.user*
 
 env/
 
-
+doc/html
+doc/latex

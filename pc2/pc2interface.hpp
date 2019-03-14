@@ -16,7 +16,7 @@ class PC2Interface {
         promisc
     };
     address_mask_t address_mask;
-    virtual void beo4_press(uint8_t keycode) = 0;
+    virtual void beo4_press(Beo4::keycode keycode) = 0;
     Beolink::LocalSourceList list;
 };
 

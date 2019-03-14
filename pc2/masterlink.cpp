@@ -57,12 +57,12 @@ MasterlinkTelegram PC2Beolink::interrogate(MasterlinkTelegram & tgram) {
     int i = 0;
     // FIXME: I'm faking threaded code flow here; disaster waiting to happen
     while (i++ <= 5) {
-        this->yield(); // will wait 200 milliseconds
-        if(future.wait_for(std::chrono::milliseconds(10)) == std::future_status::ready)
+        //this->yield(); // will wait 200 milliseconds
+        if(future.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready)
             break;
     }
     // TODO: Determine precise timeout used by B&O audio masters
-    auto retval = future.wait_for(std::chrono::milliseconds(10));
+    auto retval = future.wait_for(std::chrono::milliseconds(100));
     if(retval == std::future_status::timeout) {
         BOOST_LOG_TRIVIAL(info) << "Timeout waiting for telegram!";
         throw TelegramRequestTimeout();

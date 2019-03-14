@@ -36,7 +36,7 @@ std::ostream& generic_debug_repr(std::ostream& outputStream, const MasterlinkTel
     return outputStream;
 };
 
-std::ostream& UnknownTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::UnknownTelegram::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 };
 
@@ -56,7 +56,7 @@ typedef struct debug_field {
 
 typedef std::vector<debug_field> debug_field_list;
 
-std::string format_field(const DecodedTelegram &tgram, debug_field field) {
+std::string format_field(const DecodedTelegram::DecodedTelegram &tgram, debug_field field) {
     if(field.type == hexbyte) {
         assert(field.length == 1);
         return payload_format(field.offset, 1, boost::str(boost::format("%|02X|\t\t\t%||") % \
@@ -89,15 +89,15 @@ std::string format_field(const DecodedTelegram &tgram, debug_field field) {
         return "Unsupported field type!";
 };
 
-std::ostream& TrackInfoTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::TrackInfo::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
 
-std::ostream& StatusInfoTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::StatusInfo::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
 
-std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::AudioBus::debug_repr(std::ostream& outputStream) {
     std::string analysis;
     debug_field_list fields;
     if(this->tgram_meaning == request_status)
@@ -140,7 +140,7 @@ std::ostream& AudioBusTelegram::debug_repr(std::ostream& outputStream) {
     return outputStream;
 };
 
-std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::GotoSource::debug_repr(std::ostream& outputStream) {
     std::string analysis;
     analysis += payload_header("");
     int i = 0;
@@ -152,7 +152,7 @@ std::ostream& GotoSourceTelegram::debug_repr(std::ostream& outputStream) {
     return outputStream;
 };
 
-std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::DisplayData::debug_repr(std::ostream& outputStream) {
     std::string analysis;
 
     unsigned int i = 0;
@@ -208,14 +208,14 @@ std::ostream& DisplayDataMessage::debug_repr(std::ostream& outputStream) {
     return outputStream << analysis;
 };
 
-std::ostream& MetadataMessage::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::Metadata::debug_repr(std::ostream& outputStream) {
     return outputStream << "Metadata message: " << this->key << ": \"" << this->value << "\"";
 }
 
-std::ostream& MasterPresentTelegram::debug_repr(std::ostream& outputStream) {
+std::ostream& DecodedTelegram::MasterPresent::debug_repr(std::ostream& outputStream) {
     return generic_debug_repr(outputStream, this);
 }
-bool Metadata::any_surprises_here() {
+bool DecodedTelegram::Metadata::any_surprises_here() {
     unsigned int i = 0;
     std::string analysis = "";
     bool anything_unexpected = false;

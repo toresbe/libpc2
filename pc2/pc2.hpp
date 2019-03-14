@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <ctime>
 #include <map>
+#include <semaphore.h>
 
 class PC2;
 class PC2Beolink;
@@ -60,6 +61,7 @@ class TelegramRequestTimeout: public std::exception {};
 class PC2Beolink {
     PC2 *pc2;
     public:
+    PC2Beolink (PC2 * pc2);
     pending_request_queue_t pending_request_queue;
     void handle_ml_request(MasterlinkTelegram & mlt);
     void handle_ml_status(MasterlinkTelegram & mlt);
@@ -81,12 +83,13 @@ class PC2 {
     unsigned int listener_count = 0;
     std::time_t last_light_timestamp = 0;
     void init();
-    bool open();
 
     public:
+    sem_t semaphore;
     // TODO: make private
+    bool open();
     PC2Interface *interface;
-    std::function<void(Beo4::keycode)> keystroke_callback = nullptr;
+    std::function<void(Beo4::keycode)> keystroke_callback;
     PC2Device *device;
     PC2Mixer *mixer;
     PC2Beolink *beolink;

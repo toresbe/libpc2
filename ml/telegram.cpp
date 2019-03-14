@@ -85,11 +85,6 @@ namespace DecodedTelegram {
         this->src = Masterlink::source::a_mem2;
     }
 
-    std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram& m) {
-        m.debug_repr(outputStream);
-        return outputStream;
-    };
-
     DecodedTelegram *DecodedTelegramFactory::make(MasterlinkTelegram & tgram) {
         switch (tgram.payload_type) {
             case MasterlinkTelegram::payload_types::metadata:
@@ -107,6 +102,12 @@ namespace DecodedTelegram {
         }
     }
 }
+
+std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram::DecodedTelegram& m) {
+    m.debug_repr(outputStream);
+    return outputStream;
+};
+
 uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
     uint8_t checksum;
 
