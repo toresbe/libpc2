@@ -50,6 +50,8 @@ class PC2DeviceIOFinder {
 };
 
 
+/** \brief Starts event-handling thread and registers singleton
+ */
 PC2DeviceIO::PC2DeviceIO() {
     libusb_init(&this->usb_ctx);
     this->usb_thread = new std::thread (&PC2DeviceIO::usb_loop, this);
@@ -97,6 +99,7 @@ PC2DeviceIO::~PC2DeviceIO() {
     this->keep_running = false;
     libusb_close(this->pc2_handle);
     this->usb_thread->join();
+    singleton = nullptr;
 }
 
 bool PC2DeviceIO::write(const PC2Message &message) {
