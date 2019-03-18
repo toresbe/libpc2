@@ -8,18 +8,18 @@
 class PC2Mixer {
     PC2 *pc2;
     public:
-    struct state {
-        short unsigned int volume;
-        short int bass;
-        short int treble;
-        short int balance;
-        bool loudness;
-        bool headphones_plugged_in;
-        bool transmitting_locally;
-        bool transmitting_from_ml;
-        bool distributing_on_ml;
-        bool speakers_muted;
-        bool speakers_on;
+    struct mixer_state_t {
+        short unsigned int volume;          ///< Volume, range 0 to ??
+        short int bass;                     ///< Bass, range -6 to 6?
+        short int treble;                   ///< Treble, range -6 to 6?
+        short int balance;                  ///< Balance, range -?? to ??
+        bool loudness;                      ///< Loudness equalization
+        bool headphones_plugged_in;         ///< Headphone plug sensor
+        bool transmitting_locally;          ///< Sending to local speakers over Powerlink
+        bool transmitting_from_ml;          ///< Sending to speakers from Masterlink
+        bool distributing_on_ml;            ///< Distributing local audio over Masterlink
+        bool speakers_muted;                ///< Speaker output muted
+        bool speakers_on;                   ///< Speaker power-on signal
     } state;
     PC2Mixer(PC2 *pc2);
     void send_routing_state();
