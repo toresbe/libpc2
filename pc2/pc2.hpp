@@ -5,6 +5,7 @@
 #include <functional>
 #include <vector>
 #include <cstdint>
+#include <list>
 #include <ctime>
 #include <map>
 #include <semaphore.h>
