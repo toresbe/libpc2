@@ -56,9 +56,12 @@ PC2DeviceIO::PC2DeviceIO() {
     singleton = this;
 }
 
+/** \brief Attempt to open USB device
+*/
 bool PC2DeviceIO::open() {
+    libusb_device *pc2_dev;
     try {
-        this->pc2_dev = PC2DeviceIOFinder::find_pc2(this->usb_ctx);
+        pc2_dev = PC2DeviceIOFinder::find_pc2(this->usb_ctx);
     }
     catch (std::exception &e) {
         throw eDeviceError;
@@ -66,7 +69,7 @@ bool PC2DeviceIO::open() {
     int result = 0;
 
 
-    result = libusb_open(this->pc2_dev, &this->pc2_handle);
+    result = libusb_open(pc2_dev, &this->pc2_handle);
     if (result) {
         BOOST_LOG_TRIVIAL(error) << "Could not open PC2 device, error:" << result;
         throw eDeviceError;
@@ -88,16 +91,16 @@ bool PC2DeviceIO::open() {
         libusb_submit_transfer(this->transfer_in);
         return true;
     }
-
-
 }
 
 PC2DeviceIO::~PC2DeviceIO() {
-    BOOST_LOG_TRIVIAL(error) << "Dummy PC2 device destructor";
+    this->keep_running = false;
+    libusb_close(this->pc2_handle);
+    this->usb_thread->join();
 }
 
 bool PC2DeviceIO::write(const PC2Message &message) {
-    //std::lock_guard<std::mutex> guard(this->mutex);
+    // TODO: Figure out syntax to create vector of proper size
     std::vector<uint8_t> telegram; //(message.size() + 2);
     // start of transmission
     telegram.push_back(0x60);
@@ -113,6 +116,7 @@ bool PC2DeviceIO::write(const PC2Message &message) {
         TelegramPrinter::print(foo);
     }
 
+    // This mutex is unlocked in the callback
     this->transfer_out_mutex.lock();
     libusb_fill_interrupt_transfer( 
             this->transfer_out, this->pc2_handle, 0x01, //USB_ENDPOINT_OUT,
@@ -135,6 +139,7 @@ void PC2DeviceIO::write_callback(struct libusb_transfer *transfer) {
 }
 
 void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
+    // FIXME: Handle non-successful transfers more elegantly
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
     assert(!libusb_submit_transfer(singleton->transfer_in));
     BOOST_LOG_TRIVIAL(debug) << "Read callback invoked";
@@ -144,7 +149,6 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
 
     // Are we waiting for a message continuation?
     if(singleton->reassembly_buffer.size()) {
-
         BOOST_LOG_TRIVIAL(debug) << "Continuation mode...";
         // Yes, we're in continuation mode
         // - add the message to continuation buffer
@@ -180,14 +184,6 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
             lk.unlock();
         }
     }
-
-//    transfer->actual_length;
-//
-//    if (buffer[actual_length - 1] == 0x61) {
-//        PC2Message msg;
-//        eot = true;
-//        this->reassembly_buffer.clear();
-//    }
 }
 
 PC2Telegram PC2DeviceIO::read() {
@@ -226,8 +222,10 @@ PC2Device::PC2Device(PC2* pc2) {
     this->pc2 = pc2;
 }
 
+/**! \brief Loop indefinitely handling USB events
+ */
 void PC2DeviceIO::usb_loop() {
-    while(1) {
+    while(this->keep_running) {
         libusb_handle_events(this->usb_ctx);
     }
 }

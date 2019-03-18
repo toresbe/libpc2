@@ -19,24 +19,31 @@ class PC2Device;
  * Implements only very basic read and write methods.
  */
 class PC2DeviceIO {
-    libusb_device *pc2_dev;
-    libusb_device_handle *pc2_handle;
-    libusb_transfer *transfer_out = NULL;
-    libusb_transfer *transfer_in = NULL;
+    libusb_context *usb_ctx;                ///< libusb context variable
+    libusb_device *pc2_dev;                 ///< Reference to PC2 device
+    libusb_device_handle *pc2_handle;       ///< File descriptor/device handle of PC2 device
 
-    std::mutex transfer_out_mutex;
+    libusb_transfer *transfer_out = NULL;   ///< Outgoing transfer struct
+    std::mutex transfer_out_mutex;          ///< Mutex for outgoing transfer struct
 
-    std::vector<uint8_t> reassembly_buffer;
-    unsigned int remaining_bytes;
-    uint8_t input_buffer[1024];
-    std::mutex mutex;
-    std::condition_variable data_waiting;
-    std::queue<PC2Telegram> inbox;
+    libusb_transfer *transfer_in = NULL;    ///< Incoming transfer struct
+    uint8_t input_buffer[1024];             ///< Incoming transfer data buffer
+
+    bool keep_running = true;               ///< If this is set to 0, the USB event thread will terminate after libusb_handle_event returns
+
+    std::vector<uint8_t> reassembly_buffer; ///< Holding buffer for reassembling fragmented messages from PC2 device
+    unsigned int remaining_bytes;           ///< Number of bytes expected
+
+    std::mutex mutex;                       ///< Inbox message flag condition variable mutex
+    std::condition_variable data_waiting;   ///< Inbox message flag condition variable
+    std::queue<PC2Telegram> inbox;          ///< Incoming message queue
+
+    std::thread * usb_thread;               ///< USB event handling loop thread
+
     void send_next();
-    std::thread * usb_thread;
-    public:
     void usb_loop();
-    libusb_context *usb_ctx;
+
+    public:
     bool open();
     static void read_callback(struct libusb_transfer *transfer);
     static void write_callback(struct libusb_transfer *transfer);
