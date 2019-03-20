@@ -21,13 +21,13 @@ namespace Beolink {
         /*! start media playback/request source via beolink */
         virtual void start() = 0;
         /*! end media playback/unsubscribe from beolink */
-        virtual void stop() = 0; 
+        virtual void stop() = 0;
     };
 
     class LocalSource: public Source {
     };
 
-    class BeolinkSource: public Source {
+    class LinkSource: public Source {
         PC2Beolink * beolink;
     };
 
@@ -95,14 +95,13 @@ class PC2 {
     PC2Beolink *beolink;
 
     PC2(PC2Interface * interface);
-    ~PC2();
 
     void event_loop(volatile bool & keepRunning);
     void keypress(Beo4::keycode keycode);
 };
 
 class LightControlHandler {
-    public: 
+    public:
     virtual void handle_command(Beo4::keycode code) = 0;
 };
 
@@ -117,6 +116,6 @@ class MediaCore {
     void set_source(Beolink::Source *new_source);
     void keypress(Beo4::keycode keycode);
     void standby();
-};  
+};
 
 #endif

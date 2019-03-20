@@ -44,7 +44,7 @@ class PC2DeviceIO {
     void usb_loop();
 
     public:
-    bool open();
+    void open();
     static void read_callback(struct libusb_transfer *transfer);
     static void write_callback(struct libusb_transfer *transfer);
     //TODO: Replace with the following
@@ -70,8 +70,8 @@ class PC2Device {
     void send_message(const PC2Message &message);
     void set_address_filter(PC2Interface::address_mask_t mask);
     PC2Device(PC2* pc2);
-    bool open();
-    bool close();
+    void open();
+    void close();
 };
 
 #endif

@@ -155,8 +155,6 @@ void PC2DeviceIO::write(const PC2Message &message) {
     for (auto &x : telegram)
         debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
     BOOST_LOG_TRIVIAL(debug) << debug_message;
-
-    return true;
 }
 
 void PC2DeviceIO::write_callback(struct libusb_transfer *transfer) {
@@ -233,7 +231,7 @@ PC2Telegram PC2DeviceIO::read() {
     return msg;
 }
 
-bool PC2Device::open() {
+void PC2Device::open() {
     this->usb_device.open();
     this->event_thread = new std::thread (&PC2Device::event_loop, this);
 };
@@ -243,7 +241,7 @@ void PC2Device::send_message(const PC2Message &message) {
     this->usb_device.write(message);
 }
 
-bool PC2Device::close() {
+void PC2Device::close() {
     this->usb_device.write({ 0xa7 });
 }
 
