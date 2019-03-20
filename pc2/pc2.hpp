@@ -57,7 +57,7 @@ typedef std::list<pending_request_t *> pending_request_queue_t;
 
 class TelegramRequestTimeout: public std::exception {};
 
-/**! Beolink-related functions for communication and audio bus arbitration
+/**! \brief Beolink-related functions for communication and audio bus arbitration
  */
 class PC2Beolink {
     PC2 *pc2;
@@ -83,7 +83,6 @@ class PC2 {
     uint8_t active_source = 0;
     unsigned int listener_count = 0;
     std::time_t last_light_timestamp = 0;
-    void init();
 
     public:
     sem_t semaphore;

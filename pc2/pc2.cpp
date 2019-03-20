@@ -31,22 +31,9 @@ PC2::PC2(PC2Interface * interface) {
     this->mixer = new PC2Mixer(this);
 }
 
-/*
-void PC2::yield(std::string description) {
-    auto foo = this->device->get_data(200);
-    BOOST_LOG_TRIVIAL(debug) << "(was expecting packet: " << description << ")";
-    if (foo.size()) process_telegram(foo);
-}
-
-void PC2::yield() {
-    auto foo = this->device->get_data(200);
-    if (foo.size()) process_telegram(foo);
-}
-*/
-
 bool PC2::open() {
     this->device->open();
-    this->init();
+    this->device->init();
     return true;
 }
 
@@ -83,6 +70,7 @@ void PC2Beolink::process_beo4_keycode(uint8_t type, uint8_t keycode) {
         BOOST_LOG_TRIVIAL(warning) << "We should send a Masterlink shutdown signal now!";
     }
 
+    // TODO: Keycodes need to be separated into classes here.
     if (this->pc2->keystroke_callback) {
         this->pc2->keystroke_callback((Beo4::keycode)keycode);
     } else {
@@ -106,24 +94,6 @@ void PC2Device::process_message(PC2Telegram & tgram) {
     }
 }
 
-/*
-void PC2::expect_ack() {
-    PC2Telegram telegram = this->device->get_data(500);
-
-    if (telegram[1] == 0x04) {
-        if ((telegram[2] == 0x01) | (telegram[2] == 0x41)) {
-            BOOST_LOG_TRIVIAL(debug) << " Got ACK.";
-            if(telegram[5] != 0x01) {
-                BOOST_LOG_TRIVIAL(warning) << "Masterlink not working.";
-            }
-
-        }
-    } else {
-        BOOST_LOG_TRIVIAL(warning) << "Expected an ACK but did not get one!";
-        process_telegram(telegram);
-    }
-}
-*/
 
 /*
 //void PC2::send_audio() {
@@ -166,9 +136,7 @@ void PC2::event_loop(volatile bool & keepRunning) {
         this->device->process_message(this->device->inbox.front());
         this->device->inbox.pop();
     }
-
 }
-
 
 // TODO: Rewrite to use more current idioms
 void PC2Beolink::broadcast_timestamp() {
@@ -184,13 +152,4 @@ void PC2Beolink::broadcast_timestamp() {
             0x00, 0x03, hour, minute, seconds,  \
             0x00, day, month, year, 0x02, 0x76, \
             0x00 });
-}
-
-PC2::~PC2() {
-    this->device->send_message({ 0xa7 });
-}
-
-void PC2::init() {
-    this->device->send_message({ 0xf1 });
-    this->device->send_message({ 0x80, 0x01, 0x00 });
 }

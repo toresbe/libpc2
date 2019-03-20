@@ -18,8 +18,12 @@ class eDeviceError : public std::exception { virtual const char* what() const th
 
 PC2DeviceIO *singleton = nullptr;
 
+/**! \brief Simple class to locate the PC2 device on the USB bus
+ */
 class PC2DeviceIOFinder {
     public:
+        /**! \brief Search USB bus for PC2 vendor and product ID and return libusb_device if found
+         */
         static libusb_device * find_pc2(libusb_context * ctx) {
             // cycle through USB devices, and return first matching PC2 device.
             libusb_device **device_list;
@@ -38,9 +42,10 @@ class PC2DeviceIOFinder {
         }
 
     private:
+        /**! \brief Compare the USB device descriptor with the defined VENDOR_ID and PRODUCT_ID.
+        /    \return true if 'device' points to a PC2.
+        */
         static bool is_pc2(libusb_device * device) {
-            // Compare the USB device descriptor with the defined VENDOR_ID and PRODUCT_ID.
-            // Return true if 'device' points to a PC2.
             struct libusb_device_descriptor desc;
             libusb_get_device_descriptor(device, &desc);
             if ((desc.idVendor == VENDOR_ID) && (desc.idProduct == PRODUCT_ID))
@@ -58,9 +63,18 @@ PC2DeviceIO::PC2DeviceIO() {
     singleton = this;
 }
 
-/** \brief Attempt to open USB device
+/** \brief Initializes the device.
+ *  \todo More research is needed into the significance of each instruction and its data.
+ */
+void PC2Device::init() {
+    this->send_message({ 0xf1 });
+    // TODO: Move this to separate function
+    this->send_message({ 0x80, 0x01, 0x00 });
+}
+
+/** \brief Attempt to open USB device and allocate transfer data structures
 */
-bool PC2DeviceIO::open() {
+void PC2DeviceIO::open() {
     libusb_device *pc2_dev;
     try {
         pc2_dev = PC2DeviceIOFinder::find_pc2(this->usb_ctx);
@@ -86,15 +100,18 @@ bool PC2DeviceIO::open() {
         BOOST_LOG_TRIVIAL(info) << "Opened PC2 device";
         this->transfer_in = libusb_alloc_transfer(0);
         this->transfer_out = libusb_alloc_transfer(0);
+        // FIXME: Change read_callback to accept an instance pointer to avoid
+        // this singleton mishegas
         libusb_fill_interrupt_transfer( 
                 this->transfer_in, this->pc2_handle, USB_ENDPOINT_IN,
                 this->input_buffer,  512,
                 PC2DeviceIO::read_callback, NULL, 0); 
         libusb_submit_transfer(this->transfer_in);
-        return true;
     }
 }
 
+/** \brief Shut down event-handling thread, deregister singleton, and close device
+ */
 PC2DeviceIO::~PC2DeviceIO() {
     this->keep_running = false;
     libusb_close(this->pc2_handle);
@@ -102,7 +119,8 @@ PC2DeviceIO::~PC2DeviceIO() {
     singleton = nullptr;
 }
 
-bool PC2DeviceIO::write(const PC2Message &message) {
+// FIXME: Type confusion here. Is PC2Message implicitly cast from a PC2Telegram?
+void PC2DeviceIO::write(const PC2Message &message) {
     // TODO: Figure out syntax to create vector of proper size
     std::vector<uint8_t> telegram; //(message.size() + 2);
     // start of transmission
@@ -120,14 +138,20 @@ bool PC2DeviceIO::write(const PC2Message &message) {
     }
 
     // This mutex is unlocked in the callback
-    this->transfer_out_mutex.lock();
+    if(!this->transfer_out_mutex.try_lock_for(std::chrono::seconds(1))) {
+        BOOST_LOG_TRIVIAL(error) << "Timed out waiting for mutex while sending message in PC2DeviceIO::write!";
+        // Try for one more second, crap out if it doesn't work
+        assert(this->transfer_out_mutex.try_lock_for(std::chrono::seconds(1)));
+    }; 
+
+    // FIXME: USB_ENDPOINT_OUT is the wrong value. Why?
     libusb_fill_interrupt_transfer( 
             this->transfer_out, this->pc2_handle, 0x01, //USB_ENDPOINT_OUT,
             telegram.data(),  telegram.size(),
             PC2DeviceIO::write_callback, NULL, 0); 
     libusb_submit_transfer(this->transfer_out);
 
-    std::string debug_message = "Sent:";
+    std::string debug_message = "Sending:";
     for (auto &x : telegram)
         debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
     BOOST_LOG_TRIVIAL(debug) << debug_message;
@@ -138,14 +162,14 @@ bool PC2DeviceIO::write(const PC2Message &message) {
 void PC2DeviceIO::write_callback(struct libusb_transfer *transfer) {
     singleton->transfer_out_mutex.unlock();
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
-    BOOST_LOG_TRIVIAL(debug) << "Write callback invoked";
+    BOOST_LOG_TRIVIAL(debug) << "Write successful";
 }
 
 void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     // FIXME: Handle non-successful transfers more elegantly
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
+    BOOST_LOG_TRIVIAL(debug) << "Read successful";
     assert(!libusb_submit_transfer(singleton->transfer_in));
-    BOOST_LOG_TRIVIAL(debug) << "Read callback invoked";
 
     // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
     // so FIXME: prepare for that eventuality!
@@ -161,6 +185,7 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
         singleton->remaining_bytes -= transfer->actual_length;
         // was that the last of it?
         if(!singleton->remaining_bytes) {
+            BOOST_LOG_TRIVIAL(debug) << "Continuation mode done";
             singleton->inbox.push(singleton->reassembly_buffer);
             singleton->reassembly_buffer.clear();
             std::unique_lock<std::mutex> lk(singleton->mutex);
@@ -213,12 +238,13 @@ bool PC2Device::open() {
     this->event_thread = new std::thread (&PC2Device::event_loop, this);
 };
 
+// FIXME: Is this really necessary?
 void PC2Device::send_message(const PC2Message &message) {
     this->usb_device.write(message);
 }
 
 bool PC2Device::close() {
-    this->usb_device.write({0xa7});
+    this->usb_device.write({ 0xa7 });
 }
 
 PC2Device::PC2Device(PC2* pc2) {

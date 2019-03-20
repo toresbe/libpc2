@@ -24,7 +24,7 @@ class PC2DeviceIO {
     libusb_device_handle *pc2_handle;       ///< File descriptor/device handle of PC2 device
 
     libusb_transfer *transfer_out = NULL;   ///< Outgoing transfer struct
-    std::mutex transfer_out_mutex;          ///< Mutex for outgoing transfer struct
+    std::timed_mutex transfer_out_mutex;    ///< Mutex for outgoing transfer struct
 
     libusb_transfer *transfer_in = NULL;    ///< Incoming transfer struct
     uint8_t input_buffer[1024];             ///< Incoming transfer data buffer
@@ -47,9 +47,12 @@ class PC2DeviceIO {
     bool open();
     static void read_callback(struct libusb_transfer *transfer);
     static void write_callback(struct libusb_transfer *transfer);
+    //TODO: Replace with the following
+    //static void read_callback(struct libusb_transfer *transfer, PC2DeviceIO * instance);
+    //static void write_callback(struct libusb_transfer *transfer, PC2DeviceIO * instance);
     PC2DeviceIO();
     ~PC2DeviceIO();
-    bool write(const PC2Message &message);
+    void write(const PC2Message &message);
     PC2Telegram read();
 };
 
@@ -61,6 +64,7 @@ class PC2Device {
     std::thread * event_thread;
     void event_loop();
     public:
+    void init();
     std::queue<PC2Telegram> inbox;
     void process_message(PC2Telegram & tgram);
     void send_message(const PC2Message &message);
