@@ -168,13 +168,18 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
     BOOST_LOG_TRIVIAL(debug) << "Read successful";
     assert(!libusb_submit_transfer(singleton->transfer_in));
+    PC2Message msg(singleton->input_buffer, singleton->input_buffer + transfer->actual_length);
+    std::string debug_message = "received:";
+    for (auto &x : msg)
+        debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
+    BOOST_LOG_TRIVIAL(debug) << debug_message;
 
     // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
     // so FIXME: prepare for that eventuality!
 
     // Are we waiting for a message continuation?
     if(singleton->reassembly_buffer.size()) {
-        BOOST_LOG_TRIVIAL(debug) << "Continuation mode...";
+        BOOST_LOG_TRIVIAL(debug) << "Continuation mode, "<< singleton->remaining_bytes << " remaining...";
         // Yes, we're in continuation mode
         // - add the message to continuation buffer
         singleton->reassembly_buffer.insert(singleton->reassembly_buffer.end(),
@@ -196,11 +201,14 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
         assert(transfer->actual_length >= 3);
         // is singleton message continued?
         int msg_length = (singleton->input_buffer[1] + 3);
-        if(msg_length < transfer->actual_length) {
+        BOOST_LOG_TRIVIAL(debug) << "Message length: " << msg_length << " bytes";
+        if(msg_length > transfer->actual_length) {
             // Yes, append to continuation buffer
             singleton->reassembly_buffer.insert(singleton->reassembly_buffer.end(),
                     singleton->input_buffer, 
                     singleton->input_buffer + transfer->actual_length);
+            singleton->remaining_bytes = msg_length - transfer->actual_length;
+            BOOST_LOG_TRIVIAL(debug) << "Continuation mode started, expecting " << singleton->remaining_bytes << " more bytes";
         } else {
             // Nope, it's just a simple message.
             PC2Message msg(singleton->input_buffer, singleton->input_buffer + transfer->actual_length);
