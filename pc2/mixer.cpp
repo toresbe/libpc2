@@ -1,12 +1,12 @@
 #include "pc2/mixer.hpp"
 
-PC2Mixer::PC2Mixer(PC2USBDevice *device) {
-    this->device = device;
+PC2Mixer::PC2Mixer(PC2 *pc2) {
+    this->pc2 = pc2;
 }
 
 void PC2Mixer::speaker_mute(bool is_muted) {
     uint8_t mute_command = is_muted ? 0x80 : 0x81;
-    this->device->send_telegram({ 0xea, mute_command });
+    this->pc2->device->send_message({ 0xea, mute_command });
     this->state.speakers_muted = is_muted;
 }
 
@@ -19,11 +19,11 @@ void PC2Mixer::speaker_power(bool is_powered) {
     uint8_t power_command = is_powered ? 0xFF : 0x00;
 
     if (is_powered) {
-        this->device->send_telegram({ 0xea, power_command });
+        this->pc2->device->send_message({ 0xea, power_command });
         this->speaker_mute(false);
     } else {
         this->speaker_mute(true);
-        this->device->send_telegram({ 0xea, power_command });
+        this->pc2->device->send_message({ 0xea, power_command });
     }
 
     this->state.speakers_on = is_powered;
@@ -39,7 +39,7 @@ void PC2Mixer::adjust_volume(int adjustment) {
 
     for(int i = 0; adjustment != i; i += increment) {
         BOOST_LOG_TRIVIAL(info) << "adjusting volume";
-        this->device->send_telegram({ 0xeb, \
+        this->pc2->device->send_message({ 0xeb, \
                 (adjustment > 0) ? (uint8_t)0x80 : (uint8_t)0x81});
     }
 }
@@ -68,8 +68,8 @@ void PC2Mixer::send_routing_state() {
         locally = 0x00;
 
 
-    this->device->send_telegram({ 0xe7, muted });
-    this->device->send_telegram({ 0xe5, locally, distribute, 0x00, muted });
+    this->pc2->device->send_message({ 0xe7, muted });
+    this->pc2->device->send_message({ 0xe5, locally, distribute, 0x00, muted });
 }
 
 void PC2Mixer::transmit_from_ml(bool transmit_enabled) {
@@ -107,7 +107,7 @@ void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint
     // volume control byte.
     uint8_t vol_byte = volume | (loudness ? 0x80 : 0x00);
 
-    this->device->send_telegram({ 0xe3, vol_byte, bass, treble, balance });
+    this->pc2->device->send_message({ 0xe3, vol_byte, bass, treble, balance });
 }
 
 void PC2Mixer::process_mixer_state(PC2Telegram & tgram) {

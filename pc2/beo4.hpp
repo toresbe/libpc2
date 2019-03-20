@@ -1,11 +1,13 @@
 #ifndef __BEO4_HPP
 #define __BEO4_HPP
 
+class Beo4;
+
 #include <cstdint>
 #include <algorithm>
 #include <map>
 #include <vector>
-#include "pc2/pc2.hpp"
+#include "ml/masterlink.hpp"
 
 class Beo4 {
     public:

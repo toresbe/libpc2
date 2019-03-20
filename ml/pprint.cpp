@@ -3,6 +3,7 @@
 #include <string>
 #include <iostream>
 #include "pprint.hpp"
+#include "masterlink.hpp"
 #include "telegram.hpp"
 #include <boost/format.hpp>
 
@@ -28,6 +29,6 @@ void TelegramPrinter::print_header(MasterlinkTelegram & tgram) {
 void TelegramPrinter::print(MasterlinkTelegram & tgram) {
     print_heading();
     print_header(tgram);
-    DecodedTelegram * m = DecodedTelegramFactory::make(tgram);
+    DecodedTelegram::DecodedTelegram * m = DecodedTelegram::DecodedTelegramFactory::make(tgram);
     std::cout << *m << std::endl;
 };

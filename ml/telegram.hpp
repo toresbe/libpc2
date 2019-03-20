@@ -1,56 +1,23 @@
+/*! \file ml/telegram.hpp
+ *  \brief Masterlink Telegram related classes
+ */
 #ifndef __ML_TELEGRAM_HPP
 #define __ML_TELEGRAM_HPP
 
 #include <vector>
 #include <map>
 #include <string>
+
+class MasterlinkTelegram;
+#include "ml/masterlink.hpp"
 #include "pc2/pc2device.hpp"
 
 typedef std::vector<std::string> payload_labels_t;
 typedef std::vector<std::pair<bool, uint8_t>> payload_expectations_t;
 
-class Masterlink {
-    public:
-    enum source {
-        a_aux = 0x97,
-        a_mem = 0x79,
-        a_mem2 = 0x7a,
-        a_tape = 0x79,
-        cd = 0x8d,
-        doorcam = 0x3e,
-        dtv = 0x1f,
-        dtv2 = 0x33,
-        dvd = 0x29,
-        dvd2 = 0x16,
-        n_radio = 0xa1,
-        pc = 0x47,
-        phono = 0xa1,
-        radio = 0x6f,
-        sat = 0x1f,
-        tv = 0x0b,
-        v_aux = 0x33,
-        v_aux2 = 0x3e,
-        v_mem = 0x15,
-        v_tape = 0x15,
-        v_tape2 = 0x16,
-    };
-
-    std::map<Masterlink::source, std::string> source_name = {
-        {Masterlink::source::tv, "TV"},
-        {Masterlink::source::v_mem, "V_MEM"},
-        {Masterlink::source::v_tape, "V_TAPE"},
-        {Masterlink::source::pc, "PC"},
-        {Masterlink::source::dvd2, "DVD2"},
-        {Masterlink::source::a_mem2, "A.MEM2"},
-        {Masterlink::source::doorcam, "DOORCAM"},
-        {Masterlink::source::v_aux2, "V.AUX2"},
-        {Masterlink::source::v_tape2, "V.TAPE2"},
-        {Masterlink::source::cd, "CD"},
-        {Masterlink::source::sat, "SAT"},
-        {Masterlink::source::dtv, "DTV"},
-    };
-};
-
+/*! \class MasterlinkTelegram
+ *! \brief Base Masterlink Telegram class
+ */
 class MasterlinkTelegram {
     public:
         std::map<uint8_t, std::string> node_name = {
@@ -149,127 +116,129 @@ class MasterlinkTelegram {
         MasterlinkTelegram();
 };
 
-class DecodedTelegram: public MasterlinkTelegram {
-    public:
-        virtual std::ostream& debug_repr(std::ostream& outputStream) = 0;
-        friend std::ostream& operator <<(std::ostream& outputStream, const DecodedTelegram& m);
-        DecodedTelegram(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} {};
-        DecodedTelegram();
-};
+namespace DecodedTelegram {
+    class DecodedTelegram: public MasterlinkTelegram {
+        public:
+            virtual std::ostream& debug_repr(std::ostream& outputStream) = 0;
+            friend std::ostream& operator <<(std::ostream& outputStream, const DecodedTelegram& m);
+            DecodedTelegram(MasterlinkTelegram & tgram): MasterlinkTelegram{tgram} {};
+            DecodedTelegram();
+    };
 
-class UnknownTelegram: public DecodedTelegram {
-    public:
-        std::ostream& debug_repr(std::ostream& outputStream);
-        UnknownTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {};
-};
+    class UnknownTelegram: public DecodedTelegram {
+        public:
+            std::ostream& debug_repr(std::ostream& outputStream);
+            UnknownTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} {};
+    };
 
-class GotoSourceTelegram: public DecodedTelegram {
-    public:
-        enum tgram_meanings {
-            unknown,
-            request_source,
-        } tgram_meanings;
-        uint8_t requested_source;
-        enum tgram_meanings tgram_meaning;
-        GotoSourceTelegram(MasterlinkTelegram & tgram);
-        std::ostream& debug_repr(std::ostream& outputStream);
-        GotoSourceTelegram();
-};
+    class GotoSource: public DecodedTelegram {
+        public:
+            enum tgram_meanings {
+                unknown,
+                request_source,
+            } tgram_meanings;
+            uint8_t requested_source;
+            enum tgram_meanings tgram_meaning;
+            GotoSource(MasterlinkTelegram & tgram);
+            std::ostream& debug_repr(std::ostream& outputStream);
+            GotoSource();
+    };
 
-class TrackInfoTelegram: public DecodedTelegram {
-    public:
-        TrackInfoTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
-        TrackInfoTelegram(uint8_t source_id); //generates boilerplate reply telegram for a source
-        std::ostream& debug_repr(std::ostream& outputStream);
-};
+    class TrackInfo: public DecodedTelegram {
+        public:
+            TrackInfo(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+            TrackInfo(uint8_t source_id); //generates boilerplate reply telegram for a source
+            std::ostream& debug_repr(std::ostream& outputStream);
+    };
 
-class StatusInfoTelegram: public DecodedTelegram {
-    public:
-        StatusInfoTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
-        StatusInfoTelegram(uint8_t source_id); //generates boilerplate reply telegram for a source
-        std::ostream& debug_repr(std::ostream& outputStream);
-};
+    class StatusInfo: public DecodedTelegram {
+        public:
+            StatusInfo(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+            StatusInfo(uint8_t source_id); //generates boilerplate reply telegram for a source
+            std::ostream& debug_repr(std::ostream& outputStream);
+    };
 
-class DisplayDataMessage: public DecodedTelegram {
-    public:
-        DisplayDataMessage(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
-        std::ostream& debug_repr(std::ostream& outputStream);
-};
+    class DisplayData: public DecodedTelegram {
+        public:
+            DisplayData(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { }
+            std::ostream& debug_repr(std::ostream& outputStream);
+    };
 
-class AudioBusTelegram: public DecodedTelegram {
-    public:
-        enum audio_bus_tgram_meanings {
-            unknown,
-            request_status,
-            status_not_distributing,
-            status_distributing,
-        } audio_bus_tgram_meanings;
-        enum audio_bus_tgram_meanings tgram_meaning;
+    class AudioBus: public DecodedTelegram {
+        public:
+            enum audio_bus_tgram_meanings {
+                unknown,
+                request_status,
+                status_not_distributing,
+                status_distributing,
+            } audio_bus_tgram_meanings;
+            enum audio_bus_tgram_meanings tgram_meaning;
 
-        AudioBusTelegram(MasterlinkTelegram & tgram);
-        AudioBusTelegram();
-        std::ostream& debug_repr(std::ostream& outputStream);
-};
+            AudioBus(MasterlinkTelegram & tgram);
+            AudioBus();
+            std::ostream& debug_repr(std::ostream& outputStream);
+    };
 
-class MasterPresentTelegram: public DecodedTelegram {
-    public:
-        static MasterPresentTelegram reply_from_request(const MasterPresentTelegram & tgram);
-        MasterPresentTelegram(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { };
-        MasterPresentTelegram();
-        std::ostream& debug_repr(std::ostream& outputStream);
-};
+    class MasterPresent: public DecodedTelegram {
+        public:
+            static MasterPresent reply_from_request(const MasterPresent & tgram);
+            MasterPresent(MasterlinkTelegram & tgram): DecodedTelegram{tgram} { };
+            MasterPresent();
+            std::ostream& debug_repr(std::ostream& outputStream);
+    };
 
-class MetadataMessage: public DecodedTelegram {
-    public:
-        std::ostream& debug_repr(std::ostream& outputStream);
-        payload_labels_t labels = {"Field type ID", "??", "??", "??", "Metadata type: N_RADIO or A_MEM2", "??", "??", "??", "??", "??", "??", "??", "??", "??"};
-        payload_expectations_t expectations = {
-            {false, 0},
-            {true, 0},
-            {true, 1},
-            {true, 1},
-            {false, 0}, // Metadata message type? If radio, gives 1A (ML SRC N_RADIO), if A MEM gives 7A (A_MEM2)
-            {true, 5},
-            {true, 0},
-            {true, 0},
-            {true, 0},
-            {true, 0xFF},
-            {true, 0},
-            {true, 0xFF},
-            {true, 0},
-            {true, 1},
-        };
-        enum metadata_message_type {
-            amem = 0x7a,
-            radio = 0xa1
-        };
+    class Metadata: public DecodedTelegram {
+        public:
+            std::ostream& debug_repr(std::ostream& outputStream);
+            payload_labels_t labels = {"Field type ID", "??", "??", "??", "Metadata type: N_RADIO or A_MEM2", "??", "??", "??", "??", "??", "??", "??", "??", "??"};
+            payload_expectations_t expectations = {
+                {false, 0},
+                {true, 0},
+                {true, 1},
+                {true, 1},
+                {false, 0}, // Metadata message type? If radio, gives 1A (ML SRC N_RADIO), if A MEM gives 7A (A_MEM2)
+                {true, 5},
+                {true, 0},
+                {true, 0},
+                {true, 0},
+                {true, 0xFF},
+                {true, 0},
+                {true, 0xFF},
+                {true, 0},
+                {true, 1},
+            };
+            enum metadata_message_type {
+                amem = 0x7a,
+                radio = 0xa1
+            };
 
-        MetadataMessage(MasterlinkTelegram & tgram);
-        bool any_surprises_here();
-        enum metadata_field_type {
-            genre = 0x01,
-            album = 0x02,
-            artist = 0x03,
-            track = 0x04,
-        };
+            Metadata(MasterlinkTelegram & tgram);
+            bool any_surprises_here();
+            enum metadata_field_type {
+                genre = 0x01,
+                album = 0x02,
+                artist = 0x03,
+                track = 0x04,
+            };
 
-        std::map<uint8_t, std::string> metadata_field_type_label {
-            {0x01, "genre"},
-                {0x02, "album"},
-                {0x03, "artist"},
-                {0x04, "track"},
-        };
+            std::map<uint8_t, std::string> metadata_field_type_label {
+                {0x01, "genre"},
+                    {0x02, "album"},
+                    {0x03, "artist"},
+                    {0x04, "track"},
+            };
 
-        Masterlink::source src;
-        std::string key;
-        std::string value;
+            Masterlink::source src;
+            std::string key;
+            std::string value;
 
-};
+    };
 
+    class DecodedTelegramFactory {
+        public:
+            static DecodedTelegram *make(MasterlinkTelegram & tgram);
+    };
+}
 
-class DecodedTelegramFactory {
-    public:
-        static DecodedTelegram *make(MasterlinkTelegram & tgram);
-};
-std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram& m);
+std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram::DecodedTelegram& m);
 #endif
