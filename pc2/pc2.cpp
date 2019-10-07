@@ -66,15 +66,18 @@ void PC2Beolink::process_beo4_keycode(uint8_t type, uint8_t keycode) {
 
     BOOST_LOG_TRIVIAL(debug) << "Got remote control code " << std::hex << std::setw(2) << std::setfill('0') << (short unsigned int) keycode;
 
-    if(type == 0x0F && keycode == 0x0C) {
-        BOOST_LOG_TRIVIAL(warning) << "We should send a Masterlink shutdown signal now!";
-    }
-
-    // TODO: Keycodes need to be separated into classes here.
-    if (this->pc2->keystroke_callback) {
-        this->pc2->keystroke_callback((Beo4::keycode)keycode);
-    } else {
-        BOOST_LOG_TRIVIAL(error) << "Not calling Beo4 callback; none registered!";
+    if(type == 0x0F) {
+       if(keycode == Beo4::keycode::standby) {
+           this->pc2->beolink->send_shutdown_all();
+       }
+    // TODO: Keycodes need to be separated into categories here; is this something 
+    // we need to pass along to the source, or is it for libpc2?
+    } else { 
+        if (this->pc2->keystroke_callback) {
+            this->pc2->keystroke_callback((Beo4::keycode)keycode);
+        } else {
+            BOOST_LOG_TRIVIAL(error) << "Not calling Beo4 callback; none registered!";
+        }
     }
 }
 

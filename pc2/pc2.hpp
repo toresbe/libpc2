@@ -66,6 +66,7 @@ class PC2Beolink {
     pending_request_queue_t pending_request_queue;
     void handle_ml_request(MasterlinkTelegram & mlt);
     void handle_ml_status(MasterlinkTelegram & mlt);
+    void handle_ml_command(MasterlinkTelegram & mlt);
     std::shared_future<MasterlinkTelegram> send_request(std::shared_ptr<MasterlinkTelegram> tgram);
     MasterlinkTelegram interrogate(MasterlinkTelegram &tgram);
     void send_telegram(MasterlinkTelegram &tgram);
@@ -77,6 +78,7 @@ class PC2Beolink {
     void process_beo4_keycode(uint8_t type, uint8_t keycode);
 //    void send_audio();
     void process_ml_telegram(PC2Telegram & tgram);
+    void send_shutdown_all();
 };
 
 class PC2 {

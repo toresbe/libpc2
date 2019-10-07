@@ -55,6 +55,7 @@ class MasterlinkTelegram {
             audio_bus = 0x08,
             status_info = 0x87,
             track_info = 0x44,
+            release = 0x11,
         };
 
         std::map<uint8_t, std::string> payload_type_name = {
@@ -65,7 +66,7 @@ class MasterlinkTelegram {
             {payload_types::metadata, "METADATA"},
             {0x0d, "BEO4_KEY"},
             {0x10, "STANDBY"},
-            {0x11, "RELEASE"},
+            {payload_types::release, "RELEASE"},
             {0x12, "???"},
             {0x20, "???"},
             {0x30, "???"},

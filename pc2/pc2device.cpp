@@ -173,6 +173,11 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     for (auto &x : msg)
         debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
     BOOST_LOG_TRIVIAL(debug) << debug_message;
+    uint8_t bogus_message[] = {0xFF, 0xFF, 0x01, 0xFF, 0xFF };
+    if(transfer->actual_length == 5 && !memcmp(singleton->input_buffer, bogus_message, 5)) {
+        BOOST_LOG_TRIVIAL(info) << "Got bogus message; ignoring...";
+        return;
+    }
 
     // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
     // so FIXME: prepare for that eventuality!
@@ -185,7 +190,11 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
         singleton->reassembly_buffer.insert(singleton->reassembly_buffer.end(),
                 singleton->input_buffer, 
                 singleton->input_buffer + transfer->actual_length);
-        singleton->remaining_bytes -= transfer->actual_length;
+        if(singleton->remaining_bytes <= transfer->actual_length) {
+            singleton->remaining_bytes = 0;
+        } else {
+            singleton->remaining_bytes -= transfer->actual_length;
+        }
         // was that the last of it?
         if(!singleton->remaining_bytes) {
             BOOST_LOG_TRIVIAL(debug) << "Continuation mode done";

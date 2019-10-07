@@ -31,6 +31,36 @@ static bool is_response_to(MasterlinkTelegram &incoming_tgram, MasterlinkTelegra
     return true;
 };
 
+void PC2Beolink::handle_ml_command(MasterlinkTelegram &mlt) {
+    BOOST_LOG_TRIVIAL(info) << "Handling command telegram";
+    if(mlt.payload_type == mlt.payload_types::release) {
+        // FIXME: Uses hard coded nonsense from keystroke handler code
+        this->pc2->device->send_message({0xe0, 0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x00, 0x9a, 0x00});
+        this->pc2->device->send_message({0xe0, 0xc0, 0xc1, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x11, 0x02, 0x02, 0x01, 0x00, 0xa2, 0x00});
+        this->pc2->device->send_message({0xe4, 0x01});
+        this->pc2->mixer->speaker_power(false);
+        this->pc2->device->send_message({0xe5, 0x00, 0x00, 0x00, 0x01});
+    }
+}
+
+void PC2Beolink::send_shutdown_all() {
+// 60 0B 00 80 04 01 0A 00 00 00 11 00 01 61.
+//                              Masterlink telegram
+//    src   |   dest   |  tgram type |    payload type    | pld size |  pld ver
+//  NODE_04 |    ALL   |   COMMAND   |       RELEASE      |   0 bytes|     1
+//                           Unknown telegram, payload
+    BOOST_LOG_TRIVIAL(info) << "Sending Masterlink shutdown telegram";
+    MasterlinkTelegram release;
+
+    // FIXME: Hard codes source node!
+    release.src_node = 0xc1;
+    release.dest_node = 0x80;
+    release.telegram_type = MasterlinkTelegram::telegram_types::command;
+    release.payload_type = MasterlinkTelegram::payload_types::release;
+    release.payload_version = 1;
+
+    this->send_telegram(release);
+}
 void PC2Beolink::handle_ml_status(MasterlinkTelegram &mlt) {
     BOOST_LOG_TRIVIAL(info) << "Handling status telegram";
     for (auto x: this->pending_request_queue) {
@@ -126,6 +156,9 @@ void PC2Beolink::process_ml_telegram(PC2Telegram & tgram) {
             break;
         case(mlt.telegram_types::status):
             handle_ml_status(mlt);
+            break;
+        case(mlt.telegram_types::command):
+            handle_ml_command(mlt);
             break;
         default:
             BOOST_LOG_TRIVIAL(warning) << "So far I can only handle request telegrams";
