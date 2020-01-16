@@ -148,13 +148,13 @@ void PC2DeviceIO::write(const PC2Message &message) {
 void PC2DeviceIO::write_callback(struct libusb_transfer *transfer) {
     singleton->transfer_out_mutex.unlock();
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
-    BOOST_LOG_TRIVIAL(debug) << "Write successful";
+    //BOOST_LOG_TRIVIAL(debug) << "Write successful";
 }
 
 void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     // FIXME: Handle non-successful transfers more elegantly
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
-    BOOST_LOG_TRIVIAL(debug) << "Read successful";
+    //BOOST_LOG_TRIVIAL(debug) << "Read successful";
     assert(!libusb_submit_transfer(singleton->transfer_in));
 
     PC2Message msg(singleton->input_buffer, singleton->input_buffer + transfer->actual_length);

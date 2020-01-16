@@ -28,7 +28,6 @@ void PC2Device::event_loop() {
         auto message_future = this->usb_device.read();
         message_assembler << message_future.get();
         if(message_assembler.has_complete_message()) {
-            BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
             inbox.push(message_assembler.get_message());
         }
     }
