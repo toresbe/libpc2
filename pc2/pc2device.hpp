@@ -40,7 +40,7 @@ class PC2DeviceIO {
     void usb_loop();
 
     std::mutex message_promises_mutex;
-    std::queue<std::promise<PC2Message>> message_promises;
+    std::queue<std::shared_ptr<std::promise<PC2Message>>> message_promises;
 
     public:
     void open();

@@ -107,7 +107,6 @@ void PC2DeviceIO::open() {
                 this->transfer_in, this->pc2_handle, USB_ENDPOINT_IN,
                 this->input_buffer,  512,
                 PC2DeviceIO::read_callback, NULL, 0); 
-        libusb_submit_transfer(this->transfer_in);
     }
 }
 
@@ -184,14 +183,16 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     }
 
     std::scoped_lock<std::mutex> lk(singleton->message_promises_mutex);
-    singleton->message_promises.front().set_value(msg);
+    singleton->message_promises.front()->set_value(msg);
     singleton->message_promises.pop();
 }
 
 std::shared_future<PC2Message> PC2DeviceIO::read() {
     std::scoped_lock<std::mutex> lk(singleton->message_promises_mutex);
-    singleton->message_promises.emplace();
-    return std::shared_future<PC2Message>(singleton->message_promises.back().get_future());
+    std::shared_ptr<std::promise<PC2Message>> promise = std::make_shared<std::promise<PC2Message>>();
+    singleton->message_promises.push(promise);
+    libusb_submit_transfer(this->transfer_in);
+    return std::shared_future<PC2Message>(singleton->message_promises.back()->get_future());
 }
 
 void PC2Device::open() {
@@ -203,12 +204,10 @@ void PC2Device::event_loop() {
     BOOST_LOG_TRIVIAL(info) << "PC2Device event thread running...";
     while(1) {
         auto message_future = this->usb_device.read();
-        message_future.wait();
-        BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
         message_assembler << message_future.get();
         if(message_assembler.has_complete_message()) {
+            BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
             inbox.push(message_assembler.get_message());
-            sem_post(&this->pc2->semaphore);
         }
     }
 }
