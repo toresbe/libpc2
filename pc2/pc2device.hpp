@@ -15,7 +15,6 @@ class PC2Device;
 #include "pc2/fragment_assembler.hpp"
 #include "pc2/mailbox.hpp"
 
-
 /**! \brief Higher-level PC2 I/O
  */
 class PC2Device {

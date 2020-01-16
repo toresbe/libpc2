@@ -26,12 +26,10 @@ void PC2Device::event_loop() {
     BOOST_LOG_TRIVIAL(info) << "PC2Device event thread running...";
     while(1) {
         auto message_future = this->usb_device.read();
-        message_future.wait();
-        BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
         message_assembler << message_future.get();
         if(message_assembler.has_complete_message()) {
+            BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
             inbox.push(message_assembler.get_message());
-            sem_post(&this->pc2->semaphore);
         }
     }
 }

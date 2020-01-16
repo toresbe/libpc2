@@ -8,7 +8,6 @@
 #include <list>
 #include <ctime>
 #include <map>
-#include <semaphore.h>
 
 class PC2;
 class PC2Beolink;
@@ -87,7 +86,6 @@ class PC2 {
     std::time_t last_light_timestamp = 0;
 
     public:
-    sem_t semaphore;
     // TODO: make private
     bool open();
     PC2Interface *interface;
