@@ -52,6 +52,7 @@ list(APPEND SRC_FILES
     masterlink/pprint.cpp
     pc2/mixer.cpp
     pc2/pc2device.cpp
+    pc2/pc2_usb_io.cpp
     pc2/pc2.cpp
     pc2/mailbox.cpp
     pc2/fragment_assembler.cpp

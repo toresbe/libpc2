@@ -68,7 +68,7 @@ void PC2Beolink::process_beo4_keycode(uint8_t type, uint8_t keycode) {
     }
 }
 
-void PC2Device::process_message(const PC2Telegram & tgram) {
+void PC2Device::process_message(const PC2Message & tgram) {
     if (tgram[2] == 0x00) {
         this->pc2->beolink->process_ml_telegram(tgram);
     }

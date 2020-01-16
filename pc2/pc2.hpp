@@ -77,7 +77,7 @@ class PC2Beolink {
     void send_beo4_code(uint8_t dest, uint8_t code);
     void process_beo4_keycode(uint8_t type, uint8_t keycode);
 //    void send_audio();
-    void process_ml_telegram(const PC2Telegram & tgram);
+    void process_ml_telegram(const PC2Message & tgram);
     void send_shutdown_all();
 };
 

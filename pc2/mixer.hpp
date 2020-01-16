@@ -29,8 +29,8 @@ class PC2Mixer {
     void transmit_from_ml(bool transmit_enabled);
     void speaker_mute(bool speakers_muted);
     void speaker_power(bool spakers_powered);
-    void process_mixer_state(const PC2Telegram & tgram);
-    void process_headphone_state(const PC2Telegram & tgram);
+    void process_mixer_state(const PC2Message & tgram);
+    void process_headphone_state(const PC2Message & tgram);
     void set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness);
 };
 #endif

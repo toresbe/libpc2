@@ -134,10 +134,10 @@ PC2Message MasterlinkTelegram::serialize() {
     this->data.insert(this->data.end(), this->payload.begin(), this->payload.end());
     this->data.push_back(checksum(this->data));
     this->data.push_back(0x00); // EOT
-    return PC2Telegram(this->data);
+    return PC2Message(this->data);
 }
 
-MasterlinkTelegram::MasterlinkTelegram(const PC2Telegram & tgram) {
+MasterlinkTelegram::MasterlinkTelegram(const PC2Message & tgram) {
     assert(tgram[0] == 0x60); // A PC2 telegram always starts with 0x60
     //assert(tgram[2] == 0x00); // A Masterlink telegram always starts with 0x00
 

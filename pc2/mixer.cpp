@@ -110,7 +110,7 @@ void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint
     this->pc2->device->send_message({ 0xe3, vol_byte, bass, treble, balance });
 }
 
-void PC2Mixer::process_mixer_state(const PC2Telegram & tgram) {
+void PC2Mixer::process_mixer_state(const PC2Message & tgram) {
     this->state.volume = tgram[3] & 0x7f;
     this->state.loudness = tgram[3] & 0x80;
     this->state.bass = (int8_t)tgram[4];
@@ -124,7 +124,7 @@ void PC2Mixer::process_mixer_state(const PC2Telegram & tgram) {
         " ldns: " << (this->state.loudness ? "on" : "off");
 };
 
-void PC2Mixer::process_headphone_state(const PC2Telegram & tgram) {
+void PC2Mixer::process_headphone_state(const PC2Message & tgram) {
     bool plugged_in = (tgram[3] == 0x01) ? true: false;
     this->state.headphones_plugged_in = plugged_in;
     BOOST_LOG_TRIVIAL(debug) << "Headphones are " << (plugged_in ? "" : "not ") << "plugged in";

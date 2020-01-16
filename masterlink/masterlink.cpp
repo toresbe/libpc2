@@ -134,7 +134,7 @@ void PC2Beolink::handle_ml_request(MasterlinkTelegram & mlt) {
     }
 };
 
-void PC2Beolink::process_ml_telegram(const PC2Telegram & tgram) {
+void PC2Beolink::process_ml_telegram(const PC2Message & tgram) {
     Masterlink ml;
     MasterlinkTelegram mlt(tgram);
     for (auto c : tgram) {
