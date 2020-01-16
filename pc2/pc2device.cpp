@@ -7,6 +7,7 @@
 #include <iostream>
 #include <chrono>
 #include <boost/format.hpp>
+#include <future>
 
 #define VENDOR_ID 0x0cd4
 #define PRODUCT_ID 0x0101
@@ -59,7 +60,6 @@ class PC2DeviceIOFinder {
  */
 PC2DeviceIO::PC2DeviceIO() {
     libusb_init(&this->usb_ctx);
-    this->inbox = std::make_shared<PC2Mailbox>();
     this->usb_thread = new std::thread (&PC2DeviceIO::usb_loop, this);
     singleton = this;
 }
@@ -169,44 +169,49 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     assert(transfer->status == LIBUSB_TRANSFER_COMPLETED);
     BOOST_LOG_TRIVIAL(debug) << "Read successful";
     assert(!libusb_submit_transfer(singleton->transfer_in));
+
     PC2Message msg(singleton->input_buffer, singleton->input_buffer + transfer->actual_length);
+    PC2Message bogus_message = {0xFF, 0xFF, 0x01, 0xFF, 0xFF };
+
     std::string debug_message = "received:";
     for (auto &x : msg)
         debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
     BOOST_LOG_TRIVIAL(debug) << debug_message;
-    uint8_t bogus_message[] = {0xFF, 0xFF, 0x01, 0xFF, 0xFF };
-    if(transfer->actual_length == 5 && !memcmp(singleton->input_buffer, bogus_message, 5)) {
+
+    if(msg == bogus_message) {
         BOOST_LOG_TRIVIAL(info) << "Got bogus message; ignoring...";
         return;
     }
 
-    // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
-    // so FIXME: prepare for that eventuality!
-
-    singleton->message_assembler << msg;
-    if(singleton->message_assembler.has_complete_message()) {
-        singleton->inbox->push(singleton->message_assembler.get_message());
-    }
+    std::scoped_lock<std::mutex> lk(singleton->message_promises_mutex);
+    singleton->message_promises.front().set_value(msg);
+    singleton->message_promises.pop();
 }
 
-PC2Telegram PC2DeviceIO::read() {
-    BOOST_LOG_TRIVIAL(warning) << "Legacy read function used";
-
-    auto msg = singleton->inbox->pop_sync();
-
-    std::string debug_message = " Got:";
-    for (auto &x : msg) {
-        debug_message.append(boost::str(boost::format(" %02X") % (unsigned int)x));
-    }
-    BOOST_LOG_TRIVIAL(debug) << debug_message;
-
-    return msg;
+std::shared_future<PC2Message> PC2DeviceIO::read() {
+    std::scoped_lock<std::mutex> lk(singleton->message_promises_mutex);
+    singleton->message_promises.emplace();
+    return std::shared_future<PC2Message>(singleton->message_promises.back().get_future());
 }
 
 void PC2Device::open() {
     this->usb_device.open();
-//    this->event_thread = new std::thread (&PC2Device::event_loop, this);
+    this->event_thread = new std::thread (&PC2Device::event_loop, this);
 };
+
+void PC2Device::event_loop() {
+    BOOST_LOG_TRIVIAL(info) << "PC2Device event thread running...";
+    while(1) {
+        auto message_future = this->usb_device.read();
+        message_future.wait();
+        BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
+        message_assembler << message_future.get();
+        if(message_assembler.has_complete_message()) {
+            inbox.push(message_assembler.get_message());
+            sem_post(&this->pc2->semaphore);
+        }
+    }
+}
 
 // FIXME: Is this really necessary?
 void PC2Device::send_message(const PC2Message &message) {

@@ -12,7 +12,9 @@ public:
   int errorCode;
 };
 
-void PC2MessageFragmentAssembler::operator<< (PC2Message &fragment) {
+void PC2MessageFragmentAssembler::operator<< (const PC2Message &fragment) {
+    // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
+    // so FIXME: prepare for that eventuality!
     // Do not add fragments if there's a message waiting
     assert(!assembled_message.size());
     // Are we waiting for a message continuation?

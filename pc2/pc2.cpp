@@ -86,7 +86,7 @@ void PC2Device::process_message(const PC2Telegram & tgram) {
 
 void PC2::event_loop(volatile bool & keepRunning) {
     while(keepRunning) {
-        this->device->process_message(this->device->inbox->pop_sync());
+        this->device->process_message(this->device->inbox.pop_sync());
     }
 }
 

@@ -8,7 +8,7 @@ class PC2MessageFragmentAssembler {
         std::vector<uint8_t> reassembly_buffer;
         PC2Message assembled_message;
     public:
-        void operator<< (PC2Message &fragment);
+        void operator<< (const PC2Message &fragment);
         bool has_complete_message();
         PC2Message get_message();
 };
