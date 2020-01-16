@@ -7,7 +7,7 @@ class Beo4;
 #include <algorithm>
 #include <map>
 #include <vector>
-#include "ml/masterlink.hpp"
+#include "masterlink/masterlink.hpp"
 
 class Beo4 {
     public:

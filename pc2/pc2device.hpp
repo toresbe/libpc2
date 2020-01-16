@@ -35,13 +35,13 @@ class PC2DeviceIO {
     bool keep_running = true;               ///< If this is set to 0, the USB event thread will terminate after libusb_handle_event returns
 
     std::thread * usb_thread;               ///< USB event handling loop thread
-    PC2Mailbox inbox;
     PC2MessageFragmentAssembler message_assembler; ///< Message fragment assembler
 
     void send_next();
     void usb_loop();
 
     public:
+    std::shared_ptr<PC2Mailbox> inbox;
     void open();
     static void read_callback(struct libusb_transfer *transfer);
     static void write_callback(struct libusb_transfer *transfer);
@@ -63,8 +63,8 @@ class PC2Device {
     void event_loop();
     public:
     void init();
-    std::queue<PC2Telegram> inbox;
-    void process_message(PC2Telegram & tgram);
+    std::shared_ptr<PC2Mailbox> inbox;
+    void process_message(const PC2Telegram & tgram);
     void send_message(const PC2Message &message);
     void set_address_filter(PC2Interface::address_mask_t mask);
     PC2Device(PC2* pc2);

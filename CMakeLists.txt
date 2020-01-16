@@ -45,15 +45,14 @@ add_subdirectory(${CMAKE_BINARY_DIR}/gunit-src
 ###
 
 list(APPEND SRC_FILES 
-    ml/telegram.cpp
-    ml/masterlink.cpp
-    ml/node.cpp
-    ml/analysis.cpp
-    ml/pprint.cpp
+    masterlink/telegram.cpp
+    masterlink/masterlink.cpp
+    masterlink/node.cpp
+    masterlink/analysis.cpp
+    masterlink/pprint.cpp
     pc2/mixer.cpp
     pc2/pc2device.cpp
     pc2/pc2.cpp
-    pc2/masterlink.cpp
     pc2/mailbox.cpp
     pc2/fragment_assembler.cpp
     #    utils/pcap_reader/pcapreader.cpp

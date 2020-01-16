@@ -11,8 +11,8 @@
 #include <vector>
 #include <array>
 
-#include "ml/telegram.hpp"
-#include "ml/pprint.hpp"
+#include "masterlink/telegram.hpp"
+#include "masterlink/pprint.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
 
@@ -134,7 +134,7 @@ void PC2Beolink::handle_ml_request(MasterlinkTelegram & mlt) {
     }
 };
 
-void PC2Beolink::process_ml_telegram(PC2Telegram & tgram) {
+void PC2Beolink::process_ml_telegram(const PC2Telegram & tgram) {
     Masterlink ml;
     MasterlinkTelegram mlt(tgram);
     for (auto c : tgram) {

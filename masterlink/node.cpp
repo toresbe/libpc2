@@ -1,6 +1,6 @@
 #include <future>
-#include "ml/node.hpp"
-#include "ml/telegram.hpp"
+#include "masterlink/node.hpp"
+#include "masterlink/telegram.hpp"
 #include "pc2/pc2.hpp"
 
 bool VideoMaster::is_present(PC2 * pc2) {

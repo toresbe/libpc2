@@ -1,7 +1,7 @@
 // Code for the PC2 USB device
 #include "pc2/pc2device.hpp"
-#include "ml/telegram.hpp"
-#include "ml/pprint.hpp"
+#include "masterlink/telegram.hpp"
+#include "masterlink/pprint.hpp"
 
 #include <boost/log/trivial.hpp>
 #include <iostream>
@@ -59,6 +59,7 @@ class PC2DeviceIOFinder {
  */
 PC2DeviceIO::PC2DeviceIO() {
     libusb_init(&this->usb_ctx);
+    this->inbox = std::make_shared<PC2Mailbox>();
     this->usb_thread = new std::thread (&PC2DeviceIO::usb_loop, this);
     singleton = this;
 }
@@ -184,14 +185,14 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
 
     singleton->message_assembler << msg;
     if(singleton->message_assembler.has_complete_message()) {
-        singleton->inbox.push(singleton->message_assembler.get_message());
+        singleton->inbox->push(singleton->message_assembler.get_message());
     }
 }
 
 PC2Telegram PC2DeviceIO::read() {
     BOOST_LOG_TRIVIAL(warning) << "Legacy read function used";
 
-    auto msg = singleton->inbox.pop_sync();
+    auto msg = singleton->inbox->pop_sync();
 
     std::string debug_message = " Got:";
     for (auto &x : msg) {
@@ -204,7 +205,7 @@ PC2Telegram PC2DeviceIO::read() {
 
 void PC2Device::open() {
     this->usb_device.open();
-    this->event_thread = new std::thread (&PC2Device::event_loop, this);
+//    this->event_thread = new std::thread (&PC2Device::event_loop, this);
 };
 
 // FIXME: Is this really necessary?
@@ -225,17 +226,6 @@ PC2Device::PC2Device(PC2* pc2) {
 void PC2DeviceIO::usb_loop() {
     while(this->keep_running) {
         libusb_handle_events(this->usb_ctx);
-    }
-}
-
-void PC2Device::event_loop() {
-    BOOST_LOG_TRIVIAL(info) << "PC2Device event thread running...";
-    while(1) {
-        PC2Telegram telegram;
-        telegram = this->usb_device.read();
-        BOOST_LOG_TRIVIAL(info) << "Got telegram; signalling semaphore";
-        this->inbox.push(telegram);
-        sem_post(&this->pc2->semaphore);
     }
 }
 

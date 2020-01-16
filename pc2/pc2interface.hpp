@@ -3,7 +3,7 @@
 
 class PC2Interface; 
 
-#include "ml/telegram.hpp"
+#include "masterlink/telegram.hpp"
 #include "pc2/pc2.hpp"
 #include "pc2/beo4.hpp"
 

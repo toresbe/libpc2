@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include "pc2/pc2.hpp"
-#include "ml/telegram.hpp"
+#include "masterlink/telegram.hpp"
 
 MasterlinkTelegram::MasterlinkTelegram() {
     this->data = std::vector<uint8_t>();

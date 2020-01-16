@@ -9,7 +9,7 @@
 #include <string>
 
 class MasterlinkTelegram;
-#include "ml/masterlink.hpp"
+#include "masterlink/masterlink.hpp"
 #include "pc2/pc2device.hpp"
 
 typedef std::vector<std::string> payload_labels_t;
