@@ -6,7 +6,6 @@
 #include <boost/log/trivial.hpp>
 #include <vector>
 #include <array>
-#include <semaphore.h>
 #include <functional>
 
 #include "pc2/pc2.hpp"
