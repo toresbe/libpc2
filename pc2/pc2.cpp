@@ -88,7 +88,7 @@ void PC2Device::process_message(PC2Telegram & tgram) {
     if (tgram[2] == 0x02) {
         this->pc2->beolink->process_beo4_keycode(tgram[4], tgram[6]);
     }
-    if (tgram[2] == 0x03) {
+    if (tgram[2] == 0x03 || tgram[2] == 0x1D) {
         // PC2 device sending mixer state
         this->pc2->mixer->process_mixer_state(tgram);
     }
