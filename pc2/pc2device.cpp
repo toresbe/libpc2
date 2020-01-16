@@ -182,62 +182,16 @@ void PC2DeviceIO::read_callback(struct libusb_transfer *transfer) {
     // in some cases, a 60 ... 61 message can occur _inside_ a multi-part message,
     // so FIXME: prepare for that eventuality!
 
-    // Are we waiting for a message continuation?
-    if(singleton->reassembly_buffer.size()) {
-        BOOST_LOG_TRIVIAL(debug) << "Continuation mode, "<< singleton->remaining_bytes << " remaining...";
-        // Yes, we're in continuation mode
-        // - add the message to continuation buffer
-        singleton->reassembly_buffer.insert(singleton->reassembly_buffer.end(),
-                singleton->input_buffer, 
-                singleton->input_buffer + transfer->actual_length);
-        if(singleton->remaining_bytes <= transfer->actual_length) {
-            singleton->remaining_bytes = 0;
-        } else {
-            singleton->remaining_bytes -= transfer->actual_length;
-        }
-        // was that the last of it?
-        if(!singleton->remaining_bytes) {
-            BOOST_LOG_TRIVIAL(debug) << "Continuation mode done";
-            singleton->inbox.push(singleton->reassembly_buffer);
-            singleton->reassembly_buffer.clear();
-            std::unique_lock<std::mutex> lk(singleton->mutex);
-            singleton->data_waiting.notify_one();
-            lk.unlock();
-        }
-    } else {
-        // The minimum valid message is 3 bytes; anything less
-        // is a problem
-        assert(transfer->actual_length >= 3);
-        // is singleton message continued?
-        int msg_length = (singleton->input_buffer[1] + 3);
-        BOOST_LOG_TRIVIAL(debug) << "Message length: " << msg_length << " bytes";
-        if(msg_length > transfer->actual_length) {
-            // Yes, append to continuation buffer
-            singleton->reassembly_buffer.insert(singleton->reassembly_buffer.end(),
-                    singleton->input_buffer, 
-                    singleton->input_buffer + transfer->actual_length);
-            singleton->remaining_bytes = msg_length - transfer->actual_length;
-            BOOST_LOG_TRIVIAL(debug) << "Continuation mode started, expecting " << singleton->remaining_bytes << " more bytes";
-        } else {
-            // Nope, it's just a simple message.
-            PC2Message msg(singleton->input_buffer, singleton->input_buffer + transfer->actual_length);
-            singleton->inbox.push(msg);
-            std::unique_lock<std::mutex> lk(singleton->mutex);
-            singleton->data_waiting.notify_one();
-            lk.unlock();
-        }
+    singleton->message_assembler << msg;
+    if(singleton->message_assembler.has_complete_message()) {
+        singleton->inbox.push(singleton->message_assembler.get_message());
     }
 }
 
 PC2Telegram PC2DeviceIO::read() {
-    BOOST_LOG_TRIVIAL(debug) << "Read waiting for semaphore...";
+    BOOST_LOG_TRIVIAL(warning) << "Legacy read function used";
 
-    std::unique_lock<std::mutex> lk(this->mutex);
-    this->data_waiting.wait(lk);
-    lk.unlock();
-
-    auto msg = this->inbox.front();
-    this->inbox.pop();
+    auto msg = singleton->inbox.pop_sync();
 
     std::string debug_message = " Got:";
     for (auto &x : msg) {

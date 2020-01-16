@@ -49,3 +49,5 @@ env/
 
 doc/html
 doc/latex
+
+/build

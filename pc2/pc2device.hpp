@@ -14,6 +14,9 @@ typedef std::vector<uint8_t> PC2Telegram; // a PC2 message with the start, num_b
 class PC2Device;
 #include "pc2/pc2interface.hpp"
 
+#include "pc2/fragment_assembler.hpp"
+#include "pc2/mailbox.hpp"
+
 /**! \brief Low-level USB I/O with PC2 device
  * 
  * Implements only very basic read and write methods.
@@ -31,14 +34,9 @@ class PC2DeviceIO {
 
     bool keep_running = true;               ///< If this is set to 0, the USB event thread will terminate after libusb_handle_event returns
 
-    std::vector<uint8_t> reassembly_buffer; ///< Holding buffer for reassembling fragmented messages from PC2 device
-    unsigned int remaining_bytes;           ///< Number of bytes expected
-
-    std::mutex mutex;                       ///< Inbox message flag condition variable mutex
-    std::condition_variable data_waiting;   ///< Inbox message flag condition variable
-    std::queue<PC2Telegram> inbox;          ///< Incoming message queue
-
     std::thread * usb_thread;               ///< USB event handling loop thread
+    PC2Mailbox inbox;
+    PC2MessageFragmentAssembler message_assembler; ///< Message fragment assembler
 
     void send_next();
     void usb_loop();
