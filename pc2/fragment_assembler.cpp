@@ -32,6 +32,7 @@ void PC2MessageFragmentAssembler::operator<< (const PC2Message &fragment) {
         if(!remaining_bytes) {
             BOOST_LOG_TRIVIAL(debug) << "Continuation mode done";
             assembled_message = reassembly_buffer;
+            reassembly_buffer.clear();
             if(assembled_message[assembled_message.size()-1] != 0x61) {
                 assembled_message.clear();
                 throw PC2InvalidMessage("Assembled message does not end with 0x61!");
