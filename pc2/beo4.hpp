@@ -34,6 +34,7 @@ class Beo4 {
             digit_9 = 0x09,
             go = 0x35,
             green = 0xd5,
+            light = 0x9b,
             menu = 0x5c,
             mute = 0x0d,
             pc = 0x8b,
