@@ -103,7 +103,10 @@ void AudioMaster::tick(clock::time_point now) {
         this->next_clock = now + clock_interval;
     }
     if (this->lock_pending && now >= this->lock_deadline) {
-        // Nobody answered the lock request: nobody holds it.
+        // Software: nobody answered, so nobody holds it. Firmware: no IN 44 01 (the PC2 may loop
+        // REQUEST/COMMAND v5 forever if nobody answers); act anyway rather than block TV/standby.
+        if (this->lock_mode == LockMode::firmware)
+            BOOST_LOG_TRIVIAL(warning) << "No bus lock grant (IN 44) from the PC2; going ahead";
         lock_acquired();
     }
     if (this->bus_state == BusState::arbitrating && now >= this->arbitration_deadline) {
@@ -120,16 +123,27 @@ void AudioMaster::tick(clock::time_point now) {
     }
 }
 
-void AudioMaster::set_lock_participation(bool on) { std::scoped_lock lk(this->mutex); this->use_lock = on; }
+void AudioMaster::set_lock_mode(LockMode mode) { std::scoped_lock lk(this->mutex); this->lock_mode = mode; }
+void AudioMaster::set_lock_participation(bool on) { set_lock_mode(on ? LockMode::software : LockMode::off); }
+
+void AudioMaster::bus_lock_granted() {
+    std::scoped_lock lk(this->mutex);
+    if (this->lock_mode == LockMode::firmware && this->lock_pending)
+        lock_acquired();
+}
 bool AudioMaster::holds_bus_lock() { std::scoped_lock lk(this->mutex); return this->holds_lock; }
 
 // LOCK_MANAGER: broadcast REQUEST 0x5C v1 "01"; the current holder answers STATUS v2 "01"; we take it
 // over with COMMAND v4 "01" to the holder. If nobody answers, nobody holds it.
 void AudioMaster::with_lock(std::function<void()> action, clock::time_point now) {
-    if (!this->use_lock || this->holds_lock) { action(); return; }
+    if (this->lock_mode == LockMode::off || this->holds_lock) { action(); return; }
     this->lock_waiters.push_back(action);
-    if (!this->lock_pending) {
-        this->lock_pending = true;
+    if (this->lock_pending) return;
+    this->lock_pending = true;
+    if (this->lock_mode == LockMode::firmware) {
+        this->lock_deadline = now + firmware_lock_timeout;
+        this->host.request_bus_lock();                                     // 24
+    } else {
         this->lock_deadline = now + lock_timeout;
         send(make(addr_all, addr_audio_master, 0x0b, pt_lock_manager, 1, {0x01}));
     }
@@ -141,13 +155,18 @@ void AudioMaster::lock_acquired() {
     auto waiters = std::move(this->lock_waiters);
     this->lock_waiters.clear();
     for (auto &w : waiters) w();
+    if (this->lock_mode == LockMode::firmware) {
+        // B&O releases right after its telegrams (e4 01) rather than waiting out the firmware's hold
+        this->host.release_bus_lock();
+        this->holds_lock = false;
+    }
 }
 
 void AudioMaster::handle_lock(MasterlinkTelegram &t) {
     const uint8_t type = t.telegram_type;
     if (type == 0x0b && t.dest_node == addr_all) {
         // Someone wants the lock; answer if we hold it
-        if (this->use_lock && this->holds_lock && t.src_node != addr_audio_master)
+        if (this->holds_lock && t.src_node != addr_audio_master)
             send(make(t.src_node, addr_audio_master, 0x14, pt_lock_manager, 2, {0x01}));
     } else if (type == 0x14 && t.dest_node == addr_audio_master && this->lock_pending) {
         // The holder hands it to us
@@ -180,11 +199,14 @@ void AudioMaster::listen_to_video_source(uint8_t src, clock::time_point now) {
     }, now);
 }
 
-void AudioMaster::local_standby() {
+void AudioMaster::local_standby(clock::time_point now) {
     std::scoped_lock lk(this->mutex);
     this->local_source = 0;
-    if (this->bus_state == BusState::listening_to_vm || this->vm_source)
-        stop_listening_to_vm(true);
+    if (this->bus_state == BusState::listening_to_vm || this->vm_source) {
+        // B&O takes the bus lock around releasing the video master's source (24 ... e4 01)
+        this->host.set_ml_listening(false);
+        with_lock([this] { stop_listening_to_vm(true); }, now);
+    }
     // Rooms still listening keep getting our source (observed: "I power off the BS5 locally;
     // CD continues to play on both Beolink and Beoport").
     if (this->bus_state == BusState::distributing && this->listener_nodes.empty())
@@ -323,7 +345,8 @@ void AudioMaster::handle(MasterlinkTelegram &t, clock::time_point now) {
     const bool from_vm = (from == addr_video_master);
 
     if (pt == pt_lock_manager) {
-        handle_lock(t);
+        if (this->lock_mode == LockMode::software)
+            handle_lock(t);
         return;
     }
 

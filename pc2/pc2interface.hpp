@@ -21,6 +21,9 @@ class PC2Interface {
      *  default (audio master 0x01, Beoport 0x40, source center 0x29 = B&O's LastLegalAdr default).
      *  Updated from the PC2's ML-status replies (byte 5), as BeoIpcML does. */
     uint8_t ml_node_address = 0;
+    /*! Answer the PC2's temperature reports (IN 1c) with fan duty (f9), as B&O's software does.
+     *  Without this the PC2 runs its fan output at ~94 % (BeoMaster 5). */
+    bool host_fan_control = true;
     virtual void beo4_press(Beo4::keycode keycode) = 0;
 
     // Masterlink hooks, used when address_mask is audio_master or source_center.
@@ -36,6 +39,9 @@ class PC2Interface {
     /*! The PC2 reports a USB wake-up: by_remote = it woke the PC because of a remote key (raw
      *  packet FF FF FF FF), otherwise the bus resumed by itself (FF FC FE FF). */
     virtual void pc2_wakeup(bool by_remote) { (void)by_remote; }
+
+    /*! Temperature report from the PC2 (IN 1c, whole degrees C, ~every 30 s). */
+    virtual void pc2_temperature(int8_t celsius) { (void)celsius; }
     Beolink::LocalSourceList list;
 };
 

@@ -23,6 +23,9 @@ namespace {
         bool start_source(uint8_t src) override { started_sources.push_back(src); return true; }
         void stop_source() override { stops++; }
         void link_standby() override { standby_seen = true; }
+        int lock_requests = 0, lock_releases = 0;
+        void request_bus_lock() override { lock_requests++; }
+        void release_bus_lock() override { lock_releases++; }
         std::tm local_time() override { std::tm t{}; t.tm_hour = 14; t.tm_min = 42; t.tm_sec = 28;
                                         t.tm_mday = 25; t.tm_mon = 11; t.tm_year = 118; return t; }
     };
@@ -298,6 +301,7 @@ TEST(AudioMasterHandover, ChangeRequestTimesOutIntoClaim) {
 TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_mode(AudioMaster::LockMode::software);
     am.listen_to_video_source(0x0b, at(0));
     ASSERT_TRUE(host.sent.size() == 1);
     // BS3000: 80 c1 01 0b 00 00 00 5c 01 01 01
@@ -323,8 +327,42 @@ TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
 TEST(AudioMasterLock, NobodyHoldsTheLock) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_mode(AudioMaster::LockMode::software);
     am.listen_to_video_source(0x0b, at(0));
     am.tick(at(0.6));
     EXPECT_EQ(am.holds_bus_lock(), true);
     EXPECT_EQ(host.sent.size(), 3u);     // lock request, LINK_INFO, LINK_CONNECT_1
+}
+
+
+// Firmware lock (default): the PC2 runs LOCK_MANAGER itself. B&O's sequence on TV: 24 -> IN 44 01 ->
+// telegrams -> e4 01 (capture BM5asAM 735.844-736.906).
+TEST(AudioMasterLock, FirmwareLockRequestGrantRelease) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.listen_to_video_source(0x0b, at(0));
+    EXPECT_EQ(host.lock_requests, 1);
+    EXPECT_EQ(host.sent.size(), 0u);           // nothing on the bus until the lock is granted
+    am.bus_lock_granted();
+    EXPECT_EQ(host.sent.size(), 2u);           // LINK_INFO + LINK_CONNECT_1 to the video master
+    EXPECT_EQ(host.lock_releases, 1);
+    EXPECT_EQ(am.holds_bus_lock(), false);
+}
+
+TEST(AudioMasterLock, FirmwareLockTimesOut) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.all_standby(at(0));
+    am.tick(at(1.5));
+    EXPECT_EQ(host.sent.size(), 0u);
+    am.tick(at(2.1));
+    EXPECT_EQ(host.sent.size(), 1u);           // STANDBY_1 to ALL, sent anyway
+}
+
+TEST(AudioMasterLock, FirmwareModeIgnoresLockTelegrams) {
+    FakeHost host;
+    AudioMaster am(host);
+    auto ask = incoming({0x80, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x01, 0x01});
+    am.handle(ask, at(0));
+    EXPECT_EQ(host.sent.size(), 0u);
 }

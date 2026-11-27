@@ -40,6 +40,11 @@ class AudioMasterHost {
         virtual void source_key(uint8_t src, uint8_t key) { (void)src; (void)key; }
         /*! Someone sent "all standby" on the link. */
         virtual void link_standby() {}
+        /*! Ask the PC2 firmware for the Masterlink bus lock (host command 24). The firmware runs the
+         *  LOCK_MANAGER protocol itself and answers IN 44 01 when granted -> AudioMaster::bus_lock_granted(). */
+        virtual void request_bus_lock() {}
+        /*! Release the bus lock early (host command e4 01) instead of letting the firmware's hold expire. */
+        virtual void release_bus_lock() {}
         /*! Local time for the clock broadcast. */
         virtual std::tm local_time();
 };
@@ -95,12 +100,22 @@ class AudioMaster {
         void listen_to_video_source(uint8_t src, clock::time_point now = clock::now());
         /*! Local standby: stop listening to the video master. Distribution to link rooms that
          *  still listen continues, as B&O's software does. */
-        void local_standby();
+        void local_standby(clock::time_point now = clock::now());
         /*! "All standby": tell every node to switch off, and stop everything. */
         void all_standby(clock::time_point now = clock::now());
-        /*! Take part in the LOCK_MANAGER (0x5C) bus lock (default on). The 2018 BM5 captures show no
-         *  lock traffic at all, so replays of those turn it off. */
+        /*! How the LOCK_MANAGER (0x5C) bus lock is taken before TV / all-standby:
+         *  - firmware (default): the PC2 firmware runs the lock protocol and consumes all 0x5C telegrams
+         *    whenever the host started it with "80 <node> 00" (as libpc2 does). We ask with 24, wait for
+         *    IN 44 01 (bus_lock_granted()), act, then release with e4 01 - exactly B&O's sequence.
+         *  - software: run the 0x5C exchange ourselves. Only meaningful if the PC2 forwards 0x5C
+         *    telegrams, i.e. it was started with "80 <node> <non-zero>" (promiscuous mode).
+         *  - off: no lock (the 2018 BM5 captures show no lock traffic; their replays use this). */
+        enum class LockMode { off, firmware, software };
+        void set_lock_mode(LockMode mode);
+        /*! Compatibility: true = software, false = off. */
         void set_lock_participation(bool on);
+        /*! The PC2 reported IN 44 01: the firmware holds the bus lock for us. */
+        void bus_lock_granted();
         bool holds_bus_lock();
 
         // Introspection (tests, UI)
@@ -110,7 +125,8 @@ class AudioMaster {
 
         static constexpr std::chrono::milliseconds vm_reply_timeout{1000};
         static constexpr std::chrono::seconds clock_interval{430};  ///< observed: ~7 min 10 s
-        static constexpr std::chrono::milliseconds lock_timeout{500};
+        static constexpr std::chrono::milliseconds lock_timeout{500};           ///< software mode
+        static constexpr std::chrono::milliseconds firmware_lock_timeout{2000}; ///< firmware mode (> 1.5 s)
 
     private:
         // Telegram builders
@@ -153,7 +169,7 @@ class AudioMaster {
         clock::time_point arbitration_deadline;
         uint8_t vm_busy_source = 0;
 
-        bool use_lock = true;
+        LockMode lock_mode = LockMode::firmware;
         bool holds_lock = false;
         bool lock_pending = false;
         clock::time_point lock_deadline;

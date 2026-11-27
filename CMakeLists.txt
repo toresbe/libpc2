@@ -59,6 +59,7 @@ list(APPEND SRC_FILES
     pc2/mailbox.cpp
     pc2/fragment_assembler.cpp
     pc2/telegram_pacer.cpp
+    pc2/fan_control.cpp
     #    utils/pcap_reader/pcapreader.cpp
 )
 
@@ -67,6 +68,7 @@ list(APPEND TESTING_SRC_FILES
     pc2/fragment_assembler_tests.cpp
     pc2/telegram_pacer_tests.cpp
     pc2/wakeup_tests.cpp
+    pc2/fan_control_tests.cpp
     masterlink/audio_master_tests.cpp
     masterlink/source_center_tests.cpp
     )

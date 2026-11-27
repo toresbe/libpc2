@@ -16,6 +16,16 @@
 #include "pc2/beo4.hpp"
 
 void PC2Beolink::send_telegram(MasterlinkTelegram &tgram) {
+    // The PC2 firmware (0x3daa) silently refuses telegrams whose type is not one of these, or whose
+    // payload is longer than 40 bytes - but still answers IN 01, so the refusal would go unnoticed.
+    static const uint8_t allowed[] = {0x0a, 0x0b, 0x0c, 0x14, 0x15, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x40, 0x5e};
+    bool type_ok = false;
+    for (uint8_t t : allowed) if (t == (uint8_t)tgram.telegram_type) type_ok = true;
+    if (!type_ok || tgram.payload.size() > 40) {
+        BOOST_LOG_TRIVIAL(error) << "Not sending Masterlink telegram the PC2 would refuse: type 0x" << std::hex
+            << (int)tgram.telegram_type << std::dec << ", payload " << tgram.payload.size() << " bytes";
+        return;
+    }
     PC2Message msg = tgram.serialize();
     msg.insert(msg.begin(), 0xe0);
     this->pc2->device->send_message(msg);
@@ -44,6 +54,10 @@ bool PC2::open() {
 /**! \brief Connects the AudioMaster state machine to this PC2: telegrams, mixer and interface hooks
  */
 class PC2AudioMasterHost : public AudioMasterHost {
+    public:
+    void request_bus_lock() override { this->pc2->device->send_message({ 0x24 }); }
+    void release_bus_lock() override { this->pc2->device->send_message({ 0xe4, 0x01 }); }
+    private:
     PC2 *pc2;
     public:
     PC2AudioMasterHost(PC2 *pc2) : pc2(pc2) {}
@@ -155,7 +169,27 @@ void PC2Device::process_message(const PC2Message & tgram) {
         this->pc2->mixer->process_mixer_state(tgram);
     }
     if (tgram[2] == 0x06) {
+        // Note: dead in firmware V0236 (never sent); present in 1.30
         this->pc2->mixer->process_headphone_state(tgram);
+    }
+    if (tgram[2] == 0x44 && this->pc2->beolink->audio_master) {
+        // IN 44 01: the firmware's lock manager holds the Masterlink bus lock for us
+        this->pc2->beolink->audio_master->bus_lock_granted();
+    }
+    if (tgram[2] == 0x1c && tgram.size() >= 5) {
+        // IN 1c T ff: temperature (signed degrees C) every ~30 s; answer with the fan duty
+        int8_t celsius = (int8_t)tgram[3];
+        this->pc2->interface->pc2_temperature(celsius);
+        if (this->pc2->interface->host_fan_control) {
+            if (this->pc2->fan.consume_skip()) {
+                // the first report after the host opens the device is a stale buffered packet
+                BOOST_LOG_TRIVIAL(debug) << "Ignoring first (stale) temperature report";
+            } else {
+                uint8_t duty = this->pc2->fan.on_temperature(celsius);
+                BOOST_LOG_TRIVIAL(debug) << "PC2 temperature " << (int)celsius << " C -> fan duty " << (int)duty;
+                this->send_message({ 0xf9, duty });
+            }
+        }
     }
 }
 

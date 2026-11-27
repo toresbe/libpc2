@@ -44,6 +44,7 @@ namespace Beolink {
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2interface.hpp"
 #include "pc2/mixer.hpp"
+#include "pc2/fan_control.hpp"
 class AudioMaster;
 class AudioMasterHost;
 class SourceCenter;
@@ -111,6 +112,7 @@ class PC2 {
     PC2Device *device;
     PC2Mixer *mixer;
     PC2Beolink *beolink;
+    PC2FanControl fan;   ///< host side of the thermal loop (IN 1c -> f9)
 
     PC2(PC2Interface * interface);
 
