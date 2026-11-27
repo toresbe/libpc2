@@ -9,12 +9,22 @@
 #include <future>
 
 /** \brief Initializes the device.
+ *
+ *  B&O's own software (BeoIpcML, USB captures) starts with F1, then an 80 xx 00 telegram and an
+ *  F6 address filter whose values belong together and depend on the mode:
+ *    audio master:     80 01 00   F6 10 C1 80 83 05 00 00
+ *    Beoport (not AM): 80 40 00   F6 00 82 80 83
+ *  (A BM5 capture also shows the pair 80 02 00 / ...06 00 00; what the argument means is unknown.)
+ *  It also sends 29 (version query), E7 01 and 26, which are not reproduced here yet.
  *  \todo More research is needed into the significance of each instruction and its data.
  */
 void PC2Device::init() {
     this->send_message({ 0xf1 });
-    // TODO: Move this to separate function
-    this->send_message({ 0x80, 0x01, 0x00 });
+    if (this->pc2->interface->address_mask == PC2Interface::address_mask_t::beoport)
+        this->send_message({ 0x80, 0x40, 0x00 });
+    else
+        this->send_message({ 0x80, 0x01, 0x00 });
+    this->set_address_filter(this->pc2->interface->address_mask);
 }
 
 void PC2Device::open() {
@@ -28,21 +38,32 @@ void PC2Device::event_loop() {
         auto message_future = this->usb_device.read();
         message_assembler << message_future.get();
         if(message_assembler.has_complete_message()) {
-            inbox.push(message_assembler.get_message());
+            PC2Message message = message_assembler.get_message();
+            // Type 0x01 is the PC2's status answer to a Masterlink telegram we sent
+            if (message.size() > 2 && message[2] == 0x01)
+                this->ml_pacer.acknowledge();
+            inbox.push(message);
         }
     }
 }
 
-// FIXME: Is this really necessary?
+/** \brief Send a message to the PC2.
+ *  Masterlink telegrams (first byte 0xE0) are queued and sent one at a time, each after the PC2
+ *  has answered the previous one, as B&O's software does. Everything else goes out immediately.
+ */
 void PC2Device::send_message(const PC2Message &message) {
-    this->usb_device.write(message);
+    if (!message.empty() && message[0] == 0xe0)
+        this->ml_pacer.enqueue(message);
+    else
+        this->usb_device.write(message);
 }
 
 void PC2Device::close() {
     this->usb_device.write({ 0xa7 });
 }
 
-PC2Device::PC2Device(PC2* pc2) {
+PC2Device::PC2Device(PC2* pc2)
+    : ml_pacer([this](const PC2Message &telegram) { this->usb_device.write(telegram); }) {
     this->pc2 = pc2;
 }
 

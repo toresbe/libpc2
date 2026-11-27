@@ -45,13 +45,13 @@ void PC2Mixer::adjust_volume(int adjustment) {
 }
 
 void PC2Mixer::send_routing_state() {
-    // For an as-yet-unknown reason, when the device is neither transmitting
-    // or distributing, software always seems to assert the fourth byte.
-    // I don't know what it does and have not examined closely what 
-    // effect it has.
+    // B&O's software sets this "idle" flag (E7 01, and the last byte of E5) only when no audio
+    // path is active at all. Playing Masterlink audio locally (E5 04 ...) counts as active:
+    // captures show E7 00 + E5 04 00 00 00 for TV sound from the link.
     uint8_t muted = 0x00;
 
-    if(! (this->state.distributing_on_ml || this->state.transmitting_locally)) 
+    if(! (this->state.distributing_on_ml || this->state.transmitting_locally
+                || this->state.transmitting_from_ml))
         muted = 0x01;
 
     uint8_t distribute = this->state.distributing_on_ml ? 0x01 : 0x00;

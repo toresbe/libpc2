@@ -14,12 +14,14 @@ class PC2Device;
 
 #include "pc2/fragment_assembler.hpp"
 #include "pc2/mailbox.hpp"
+#include "pc2/telegram_pacer.hpp"
 
 /**! \brief Higher-level PC2 I/O
  */
 class PC2Device {
     PC2DeviceIO usb_device;
     PC2 * pc2;
+    PC2TelegramPacer ml_pacer;              ///< Paces Masterlink (0xE0) telegrams on the PC2's status answers
     std::thread * event_thread;
     void event_loop();
     public:
