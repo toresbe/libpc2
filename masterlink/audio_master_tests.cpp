@@ -1,0 +1,203 @@
+// AudioMaster tests: replay conversations captured from B&O's own audio master (a BeoSound 5)
+// and check that we send the same Masterlink telegrams, byte for byte.
+#include "gtest/gtest.h"
+#include "masterlink/audio_master.hpp"
+#include "masterlink/audio_master_capture_vectors.inc"
+
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <sstream>
+
+namespace {
+    typedef std::vector<uint8_t> Bytes;
+
+    struct FakeHost : public AudioMasterHost {
+        std::vector<Bytes> sent;
+        bool distributing = false, listening = false, standby_seen = false;
+        std::vector<uint8_t> started_sources;
+        int stops = 0;
+        void send_telegram(MasterlinkTelegram &t) override { sent.push_back(t.serialize()); }
+        void set_ml_distribution(bool on) override { distributing = on; }
+        void set_ml_listening(bool on) override { listening = on; }
+        bool start_source(uint8_t src) override { started_sources.push_back(src); return true; }
+        void stop_source() override { stops++; }
+        void link_standby() override { standby_seen = true; }
+        std::tm local_time() override { std::tm t{}; t.tm_hour = 14; t.tm_min = 42; t.tm_sec = 28;
+                                        t.tm_mday = 25; t.tm_mon = 11; t.tm_year = 118; return t; }
+    };
+
+    MasterlinkTelegram incoming(const Bytes &ml) {
+        PC2Message frame = {0x60, (uint8_t)(ml.size() + 1), 0x00};
+        frame.insert(frame.end(), ml.begin(), ml.end());
+        frame.push_back(0x61);
+        return MasterlinkTelegram(frame);
+    }
+
+    AudioMaster::clock::time_point at(double t) {
+        return AudioMaster::clock::time_point(std::chrono::milliseconds((long long)(t * 1000)));
+    }
+
+    std::string hex(const Bytes &b) {
+        std::ostringstream os;
+        for (auto x : b) { char s[4]; snprintf(s, sizeof s, "%02x ", x); os << s; }
+        return os.str();
+    }
+
+    std::string diff(std::vector<Bytes> expected, std::vector<Bytes> got) {
+        std::sort(expected.begin(), expected.end());
+        std::sort(got.begin(), got.end());
+        std::vector<Bytes> missing, extra;
+        std::set_difference(expected.begin(), expected.end(), got.begin(), got.end(), std::back_inserter(missing));
+        std::set_difference(got.begin(), got.end(), expected.begin(), expected.end(), std::back_inserter(extra));
+        std::ostringstream os;
+        for (auto &m : missing) os << "\n    missing: " << hex(m);
+        for (auto &e : extra) os << "\n    extra:   " << hex(e);
+        return os.str();
+    }
+
+    /*! Feed the IN telegrams of a captured window; run `actions` (local API calls) at their
+     *  times; return what we sent and what B&O's software sent in the same window. */
+    std::pair<std::vector<Bytes>, std::vector<Bytes>>
+    replay(AudioMaster &am, FakeHost &host, const std::vector<CapturedTelegram> &window,
+           std::map<double, std::function<void()>> actions = {}) {
+        std::vector<Bytes> expected;
+        host.sent.clear();
+        for (auto &row : window) {
+            while (!actions.empty() && actions.begin()->first <= row.t) {
+                actions.begin()->second();
+                actions.erase(actions.begin());
+            }
+            am.tick(at(row.t));
+            if (row.out) expected.push_back(row.bytes);
+            else { auto t = incoming(row.bytes); am.handle(t, at(row.t)); }
+        }
+        for (auto &a : actions) a.second();
+        return {host.sent, expected};
+    }
+}
+
+TEST(AudioMaster, SerializedChecksumMatchesCapture) {
+    // REQUEST LINK_INFO to the video master, as captured: ... 9a 00
+    FakeHost host;
+    AudioMaster am(host);
+    am.listen_to_video_source(0x0b);
+    ASSERT_TRUE(host.sent.size() >= 1);
+    EXPECT_EQ(host.sent[0], (Bytes{0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x00, 0x9a, 0x00}));
+}
+
+TEST(AudioMaster, ParsesDestSourceFromRightByte) {
+    // VM -> PC_1 SOURCE_CONTROL with dest_src = 0x47 (captured)
+    auto t = incoming({0xc2, 0xc0, 0x01, 0x0a, 0x47, 0x00, 0x00, 0x0d, 0x06, 0x01, 0x47, 0x1f, 0x02, 0x01, 0x02, 0x00});
+    EXPECT_EQ(t.dest_src, 0x47);
+    EXPECT_EQ(t.src_src, 0x00);
+}
+
+// Link rooms connect, switch source, leave and come back (capture 137 s - 420 s):
+// bus arbitration with the video master, listener tracking, source change notices.
+TEST(AudioMaster, ReplaysLinkRoomConversation) {
+    FakeHost host;
+    AudioMaster am(host);
+    auto [got, expected] = replay(am, host, conversation_137_420);
+    EXPECT_EQ(got.size(), expected.size()) << diff(expected, got);
+    EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
+    EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
+    EXPECT_EQ(am.current_source(), 0x8d);
+    EXPECT_EQ(am.listeners(), (std::set<uint8_t>{0x01, 0x04}));
+    EXPECT_EQ(host.distributing, true);
+}
+
+// The audio master picks TV (a video master source), then goes to standby (735 s - 780 s)
+TEST(AudioMaster, ReplaysTvAndStandby) {
+    FakeHost host;
+    AudioMaster am(host);
+    bool listening_before_standby = false;
+    auto [got, expected] = replay(am, host, tv_735_780, {
+        {735.9, [&] { am.listen_to_video_source(0x0b); }},
+        {779.7, [&] { listening_before_standby = host.listening; am.local_standby(); }},
+    });
+    EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
+    EXPECT_EQ(listening_before_standby, true);
+    EXPECT_EQ(host.listening, false);
+    EXPECT_EQ(am.state() == AudioMaster::BusState::idle, true);
+}
+
+TEST(AudioMaster, ReplaysTvAndStandbySecondTime) {
+    FakeHost host;
+    AudioMaster am(host);
+    auto [got, expected] = replay(am, host, tv_1627_1642, {
+        {1627.4, [&] { am.listen_to_video_source(0x0b); }},
+        {1641.1, [&] { am.local_standby(); }},
+    });
+    EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
+}
+
+// A link room sends "all standby" while we distribute radio (1593 s)
+TEST(AudioMaster, ReplaysAllStandbyFromLinkRoom) {
+    FakeHost host;
+    AudioMaster am(host);
+    // pre-state: distributing RADIO (0x6f) to node 01, no video master answering
+    auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x6f, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(1500));
+    am.tick(at(1502));
+    ASSERT_TRUE(am.state() == AudioMaster::BusState::distributing);
+    auto [got, expected] = replay(am, host, standby_all_1593_1595);
+    EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
+    EXPECT_EQ(host.standby_seen, true);
+    EXPECT_EQ(host.distributing, false);
+    EXPECT_EQ(am.listeners().empty(), true);
+}
+
+// While listening to the video master's TV, a room asks for A.MEM: we take the bus back (984 s)
+TEST(AudioMaster, ReplaysTakingBusBackFromVideoMaster) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.listen_to_video_source(0x0b);
+    auto confirm = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x07, 0x05, 0x02, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(confirm, at(900));
+    ASSERT_TRUE(am.state() == AudioMaster::BusState::listening_to_vm);
+    auto [got, expected] = replay(am, host, amem_from_tv_984_986);
+    EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
+    EXPECT_EQ(host.listening, false);
+    EXPECT_EQ(am.current_source(), 0x79);
+}
+
+TEST(AudioMaster, StartupAndPeriodicClock) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.start(at(0));
+    // idle SOURCE_STATUS from PC_1, CLOCK, LINK_INFO probe
+    ASSERT_TRUE(host.sent.size() == 3);
+    // clock as captured at 0.656 s: 80 c1 01 14 ... 40 0b 0b 0a 00 03 14 42 28 00 25 12 18 02 88 00
+    EXPECT_EQ(host.sent[1], (Bytes{0x80, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x40, 0x0b, 0x0b, 0x0a, 0x00, 0x03,
+                                   0x14, 0x42, 0x28, 0x00, 0x25, 0x12, 0x18, 0x02, 0x88, 0x00}));
+    host.sent.clear();
+    am.tick(at(400));
+    EXPECT_EQ(host.sent.size(), 0u);
+    am.tick(at(431));
+    EXPECT_EQ(host.sent.size(), 1u);
+}
+
+TEST(AudioMaster, NoVideoMasterMeansTakeBusAfterTimeout) {
+    FakeHost host;
+    AudioMaster am(host);
+    auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(10));
+    EXPECT_EQ(am.state() == AudioMaster::BusState::arbitrating, true);
+    am.tick(at(10.5));
+    EXPECT_EQ(am.state() == AudioMaster::BusState::arbitrating, true);
+    am.tick(at(11.1));
+    EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
+    EXPECT_EQ(am.listeners(), (std::set<uint8_t>{0x04}));
+}
+
+TEST(AudioMaster, LocalStandbyKeepsDistributingToListeners) {
+    FakeHost host;
+    AudioMaster am(host);
+    auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(10));
+    am.tick(at(12));
+    am.local_standby();
+    EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
+    EXPECT_EQ(host.distributing, true);
+}

@@ -109,7 +109,7 @@ std::ostream& operator <<(std::ostream& outputStream, DecodedTelegram::DecodedTe
 };
 
 uint8_t MasterlinkTelegram::checksum(std::vector<uint8_t> data) {
-    uint8_t checksum;
+    uint8_t checksum = 0;
 
     for(auto byte: data) {
         checksum += byte;
@@ -147,8 +147,9 @@ MasterlinkTelegram::MasterlinkTelegram(const PC2Message & tgram) {
     this->dest_node = this->data[1];
     this->src_node = this->data[2];
     this->telegram_type = (telegram_types)this->data[4];
+    // data[0] is the PC2 message type (0x00); then dest, src, SOT, type, dest_src, src_src, spare
+    this->dest_src = this->data[5];
     this->src_src = this->data[6];
-    this->dest_src = this->data[7];
     this->payload_type = (payload_types)this->data[8];
     this->payload_size = this->data[9];
     this->payload_version = this->data[10];

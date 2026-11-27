@@ -9,6 +9,7 @@
 #include <functional>
 
 #include "pc2/pc2.hpp"
+#include "masterlink/audio_master.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/mixer.hpp"
 #include "pc2/beo4.hpp"
@@ -32,7 +33,49 @@ PC2::PC2(PC2Interface * interface) {
 bool PC2::open() {
     this->device->open();
     this->device->init();
+    if (this->interface->address_mask == PC2Interface::address_mask_t::audio_master)
+        this->beolink->start_audio_master();
     return true;
+}
+
+/**! \brief Connects the AudioMaster state machine to this PC2: telegrams, mixer and interface hooks
+ */
+class PC2AudioMasterHost : public AudioMasterHost {
+    PC2 *pc2;
+    public:
+    PC2AudioMasterHost(PC2 *pc2) : pc2(pc2) {}
+    void send_telegram(MasterlinkTelegram &tgram) override { this->pc2->beolink->send_telegram(tgram); }
+    void set_ml_distribution(bool on) override { this->pc2->mixer->ml_distribute(on); }
+    void set_ml_listening(bool on) override { this->pc2->mixer->transmit_from_ml(on); }
+    bool start_source(uint8_t src) override { return this->pc2->interface->ml_start_source(src); }
+    void stop_source() override { this->pc2->interface->ml_stop_source(); }
+    void source_key(uint8_t src, uint8_t key) override { this->pc2->interface->ml_source_key(src, key); }
+    void link_standby() override { this->pc2->interface->ml_link_standby(); }
+};
+
+void PC2Beolink::start_audio_master() {
+    if (this->audio_master) return;
+    this->audio_master_host = new PC2AudioMasterHost(this->pc2);
+    this->audio_master = new AudioMaster(*this->audio_master_host);
+    this->audio_master->start();
+    // Timeouts and the periodic clock broadcast
+    this->ticking = true;
+    this->ticker = new std::thread([this] {
+        while (this->ticking) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            this->audio_master->tick();
+        }
+    });
+}
+
+PC2Beolink::~PC2Beolink() {
+    if (this->ticker) {
+        this->ticking = false;
+        this->ticker->join();
+        delete this->ticker;
+    }
+    delete this->audio_master;
+    delete this->audio_master_host;
 }
 
 void PC2Beolink::send_beo4_code(uint8_t dest, uint8_t code) {
@@ -54,7 +97,10 @@ void PC2Beolink::process_beo4_keycode(uint8_t type, uint8_t keycode) {
 
     if(type == 0x0F) {
        if(keycode == Beo4::keycode::standby) {
-           this->pc2->beolink->send_shutdown_all();
+           if (this->audio_master)
+               this->audio_master->all_standby();
+           else
+               this->pc2->beolink->send_shutdown_all();
        }
     // TODO: Keycodes need to be separated into categories here; is this something 
     // we need to pass along to the source, or is it for libpc2?

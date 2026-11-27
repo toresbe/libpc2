@@ -20,7 +20,7 @@ class PC2Mixer {
         bool distributing_on_ml;            ///< Distributing local audio over Masterlink
         bool speakers_muted;                ///< Speaker output muted
         bool speakers_on;                   ///< Speaker power-on signal
-    } state;
+    } state = {};
     PC2Mixer(PC2 *pc2);
     void send_routing_state();
     void adjust_volume(int adjustment);

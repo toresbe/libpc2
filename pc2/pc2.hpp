@@ -44,6 +44,10 @@ namespace Beolink {
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2interface.hpp"
 #include "pc2/mixer.hpp"
+class AudioMaster;
+class AudioMasterHost;
+#include <thread>
+#include <atomic>
 
 #define ML_STATE_STOPPED 0x01
 #define ML_STATE_PLAYING 0x02
@@ -60,8 +64,15 @@ class TelegramRequestTimeout: public std::exception {};
  */
 class PC2Beolink {
     PC2 *pc2;
+    AudioMasterHost *audio_master_host = nullptr;
+    std::thread *ticker = nullptr;
+    std::atomic<bool> ticking{false};
     public:
     PC2Beolink (PC2 * pc2);
+    ~PC2Beolink();
+    /*! Masterlink audio master logic; created by start_audio_master() in audio master mode. */
+    AudioMaster *audio_master = nullptr;
+    void start_audio_master();
     pending_request_queue_t pending_request_queue;
     void handle_ml_request(MasterlinkTelegram & mlt);
     void handle_ml_status(MasterlinkTelegram & mlt);

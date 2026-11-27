@@ -50,6 +50,7 @@ list(APPEND SRC_FILES
     masterlink/node.cpp
     masterlink/analysis.cpp
     masterlink/pprint.cpp
+    masterlink/audio_master.cpp
     pc2/mixer.cpp
     pc2/pc2device.cpp
     pc2/pc2_usb_io.cpp
@@ -64,6 +65,7 @@ list(APPEND TESTING_SRC_FILES
     pc2/mailbox_tests.cpp
     pc2/fragment_assembler_tests.cpp
     pc2/telegram_pacer_tests.cpp
+    masterlink/audio_master_tests.cpp
     )
 
 

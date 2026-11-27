@@ -15,6 +15,7 @@
 #include "masterlink/pprint.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2.hpp"
+#include "masterlink/audio_master.hpp"
 
 static bool is_response_to(MasterlinkTelegram &incoming_tgram, MasterlinkTelegram &waiting_tgram) {
     // If...
@@ -148,6 +149,15 @@ void PC2Beolink::process_ml_telegram(const PC2Message & tgram) {
             BOOST_LOG_TRIVIAL(debug) << "Not processing packet addressed to V_MASTER";
             return;
         }
+    }
+
+    if (this->audio_master) {
+        // Audio master mode: the state machine answers requests and handles commands.
+        // Status telegrams are also offered to interrogate()'s pending requests.
+        this->audio_master->handle(mlt);
+        if (mlt.telegram_type == mlt.telegram_types::status)
+            handle_ml_status(mlt);
+        return;
     }
 
     switch(mlt.telegram_type) {
