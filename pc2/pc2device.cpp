@@ -10,19 +10,16 @@
 
 /** \brief Initializes the device.
  *
- *  B&O's own software (BeoIpcML, USB captures) starts with F1, then an 80 xx 00 telegram and an
- *  F6 address filter whose values belong together and depend on the mode:
- *    audio master:     80 01 00   F6 10 C1 80 83 05 00 00
- *    Beoport (not AM): 80 40 00   F6 00 82 80 83
- *  (A BM5 capture also shows the pair 80 02 00 / ...06 00 00; what the argument means is unknown.)
- *  It also sends 29 (version query), E7 01 and 26, which are not reproduced here yet.
- *  \todo More research is needed into the significance of each instruction and its data.
+ *  B&O's own software (BeoIpcML.exe) logs each step: "ML START" sends 80 <node address> 00,
+ *  "GET VERSION" sends 29, and "TRANSMIT OPTION" sends the F6 option telegram for its
+ *  SystemConfiguration (see send_option()). We send F1, 80 and F6 without waiting for the version
+ *  reply; 29, E7 01 and 26 are not reproduced yet.
  */
 void PC2Device::init() {
     // As BeoIpcML.exe does it (static analysis, see reports/pc2-control.md):
     //   F1; "80 <node address> 00" (the address comes from the registry value LastLegalAdr, default
     //   0x29, and is replaced by the address the PC2 reports in its ML-status replies); then, after
-    //   the version reply, "F6 <filter>" chosen by SystemConfiguration (see set_address_filter()).
+    //   the version reply, "F6 <option>" chosen by SystemConfiguration (see send_option()).
     this->send_message({ 0xf1 });
     uint8_t address = this->pc2->interface->ml_node_address;
     if (!address) {
@@ -34,7 +31,7 @@ void PC2Device::init() {
         this->pc2->interface->ml_node_address = address;
     }
     this->send_message({ 0x80, address, 0x00 });
-    this->set_address_filter(this->pc2->interface->address_mask);
+    this->send_option(this->pc2->interface->address_mask);
 }
 
 void PC2Device::open() {
@@ -84,7 +81,7 @@ PC2Device::PC2Device(PC2* pc2)
     this->pc2 = pc2;
 }
 
-void PC2Device::set_address_filter(PC2Interface::address_mask_t address_mask) {
+void PC2Device::send_option(PC2Interface::address_mask_t address_mask) {
     // BeoIpcML picks the F6 payload from its SystemConfiguration (registry), 1..10:
     //   1: 02 C0 C1 80                 2: 01 C0 80 83               3: 00 82 80 83
     //   4/5/6/8: 10 C1 80 83 <cfg> R C   7/9/10: 10 80 80 83 <cfg> R C
@@ -93,19 +90,19 @@ void PC2Device::set_address_filter(PC2Interface::address_mask_t address_mask) {
     // 8 "Compatability mode", 9 "A.OPT=5 (Linkroom A-master)", 10 "A.OPT=6 (Linkroom AV-master)".
     switch(this->pc2->interface->address_mask) {
         case PC2Interface::address_mask_t::audio_master:
-            BOOST_LOG_TRIVIAL(info) << "Setting address filter to audio master mode";
+            BOOST_LOG_TRIVIAL(info) << "Sending option: audio master mode";
             this->pc2->device->send_message({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
             return;
         case PC2Interface::address_mask_t::beoport:
-            BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
+            BOOST_LOG_TRIVIAL(info) << "Sending option: Beoport PC2 mode";
             this->pc2->device->send_message({ 0xf6, 0x00, 0x82, 0x80, 0x83 });
             return;
         case PC2Interface::address_mask_t::source_center:
-            BOOST_LOG_TRIVIAL(info) << "Setting address filter to source center mode (SystemConfiguration 7)";
+            BOOST_LOG_TRIVIAL(info) << "Sending option: source center mode (SystemConfiguration 7)";
             this->pc2->device->send_message({ 0xf6, 0x10, 0x80, 0x80, 0x83, 0x07, 0x00, 0x00 });
             return;
         case PC2Interface::address_mask_t::promisc:
-            BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
+            BOOST_LOG_TRIVIAL(info) << "Sending option: promiscuous mode";
             this->pc2->device->send_message({ 0xf6, 0xc0, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
             return;
         default:

@@ -30,7 +30,7 @@ class PC2Device {
     PC2Mailbox inbox;
     void process_message(const PC2Message & tgram);
     void send_message(const PC2Message &message);
-    void set_address_filter(PC2Interface::address_mask_t mask);
+    void send_option(PC2Interface::address_mask_t mask);   ///< F6 "option" telegram (BeoIpcML: TRANSMIT OPTION)
     PC2Device(PC2* pc2);
     void open();
     void close();
