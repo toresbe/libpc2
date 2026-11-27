@@ -178,7 +178,10 @@ namespace ml {
             video = 0x01,
             audio = 0x02,
         };
-        constexpr uint8_t byte2 = 0x00;     ///< TODO: constant in every builder
+        /*! Byte 2: the channel or track number asked for, 00 = none (as SOURCE_CONNECT short-form
+         *  byte 2). Observed: a Beosystem 3 wake-up timer for N.RADIO preset 8 sent
+         *  "02 a1 08 02 01 00 01 00 00 00 03 0c 00" (2026-11-27). Our builders send 00. */
+        constexpr uint8_t byte2 = 0x00;
         constexpr uint8_t byte3 = 0x02;     ///< TODO: constant in every builder
 
         /*! Payload byte 6. TODO: in DISCONNECT_SIGNAL B&O uses 02 = plain (8 bytes) and 03 = with the
