@@ -17,6 +17,10 @@ class PC2Interface {
         source_center   ///< provide sources for another audio master (as a BeoMaster 5 does)
     };
     address_mask_t address_mask;
+    /*! Our Masterlink node address, sent to the PC2 as "80 <address> 00" at start-up. 0 = the mode's
+     *  default (audio master 0x01, Beoport 0x40, source center 0x29 = B&O's LastLegalAdr default).
+     *  Updated from the PC2's ML-status replies (byte 5), as BeoIpcML does. */
+    uint8_t ml_node_address = 0;
     virtual void beo4_press(Beo4::keycode keycode) = 0;
 
     // Masterlink hooks, used when address_mask is audio_master or source_center.

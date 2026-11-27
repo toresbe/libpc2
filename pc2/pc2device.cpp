@@ -19,14 +19,21 @@
  *  \todo More research is needed into the significance of each instruction and its data.
  */
 void PC2Device::init() {
+    // As BeoIpcML.exe does it (static analysis, see reports/pc2-control.md):
+    //   F1; "80 <node address> 00" (the address comes from the registry value LastLegalAdr, default
+    //   0x29, and is replaced by the address the PC2 reports in its ML-status replies); then, after
+    //   the version reply, "F6 <filter>" chosen by SystemConfiguration (see set_address_filter()).
     this->send_message({ 0xf1 });
-    // Source center: B&O's software uses the Beoport values when the PC is "not main PC"
-    // (capture PC_messing_round_commented). Unverified for a BeoMaster 5 in slave mode.
-    if (this->pc2->interface->address_mask == PC2Interface::address_mask_t::beoport
-            || this->pc2->interface->address_mask == PC2Interface::address_mask_t::source_center)
-        this->send_message({ 0x80, 0x40, 0x00 });
-    else
-        this->send_message({ 0x80, 0x01, 0x00 });
+    uint8_t address = this->pc2->interface->ml_node_address;
+    if (!address) {
+        switch (this->pc2->interface->address_mask) {
+            case PC2Interface::address_mask_t::beoport: address = 0x40; break;
+            case PC2Interface::address_mask_t::source_center: address = 0x29; break;
+            default: address = 0x01; break;
+        }
+        this->pc2->interface->ml_node_address = address;
+    }
+    this->send_message({ 0x80, address, 0x00 });
     this->set_address_filter(this->pc2->interface->address_mask);
 }
 
@@ -45,6 +52,13 @@ void PC2Device::event_loop() {
             // Type 0x01 is the PC2's status answer to a Masterlink telegram we sent
             if (message.size() > 2 && message[2] == 0x01)
                 this->ml_pacer.acknowledge();
+            // ML-status (object 01, e.g. "60 04 41 01 01 02 61"): byte 5 is our node address;
+            // BeoIpcML adopts it when it is 1..0x7f
+            if (message.size() >= 7 && (message[2] & 0x1f) == 0x01 && message[5] >= 0x01 && message[5] <= 0x7f
+                    && message[5] != this->pc2->interface->ml_node_address) {
+                BOOST_LOG_TRIVIAL(info) << "PC2 reports Masterlink node address " << (int)message[5];
+                this->pc2->interface->ml_node_address = message[5];
+            }
             inbox.push(message);
         }
     }
@@ -71,17 +85,24 @@ PC2Device::PC2Device(PC2* pc2)
 }
 
 void PC2Device::set_address_filter(PC2Interface::address_mask_t address_mask) {
-    // I am not at all sure how this works but it seems to be a variable-length list of destination
-    // address bytes to which the PC2 should respond
+    // BeoIpcML picks the F6 payload from its SystemConfiguration (registry), 1..10:
+    //   1: 02 C0 C1 80                 2: 01 C0 80 83               3: 00 82 80 83
+    //   4/5/6/8: 10 C1 80 83 <cfg> R C   7/9/10: 10 80 80 83 <cfg> R C
+    // where R = LCMLRerouteON and C = CompatabilityEnabled (registry, normally 0). Its own log names
+    // 4 "A.OPT=1 (A-master)", 5 "A.OPT=0 (A-master)", 6 "A.OPT=2 (AV-master)", 7 "SL-source center",
+    // 8 "Compatability mode", 9 "A.OPT=5 (Linkroom A-master)", 10 "A.OPT=6 (Linkroom AV-master)".
     switch(this->pc2->interface->address_mask) {
         case PC2Interface::address_mask_t::audio_master:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to audio master mode";
             this->pc2->device->send_message({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
             return;
         case PC2Interface::address_mask_t::beoport:
-        case PC2Interface::address_mask_t::source_center:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
             this->pc2->device->send_message({ 0xf6, 0x00, 0x82, 0x80, 0x83 });
+            return;
+        case PC2Interface::address_mask_t::source_center:
+            BOOST_LOG_TRIVIAL(info) << "Setting address filter to source center mode (SystemConfiguration 7)";
+            this->pc2->device->send_message({ 0xf6, 0x10, 0x80, 0x80, 0x83, 0x07, 0x00, 0x00 });
             return;
         case PC2Interface::address_mask_t::promisc:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to promiscuous mode";
