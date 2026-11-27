@@ -12,7 +12,8 @@ std::tm AudioMasterHost::local_time() {
     return *std::localtime(&t);
 }
 
-AudioMaster::AudioMaster(AudioMasterHost &host) : host(host) {}
+AudioMaster::AudioMaster(AudioMasterHost &host, uint8_t system_configuration)
+    : host(host), system_configuration(system_configuration) {}
 
 // ---------------------------------------------------------------- telegram builders
 
@@ -97,7 +98,7 @@ void AudioMaster::send_clock() {
 // REQUEST LINK_INFO to the video master, as the audio master
 void AudioMaster::send_link_info_request_to_vm() {
     send(make(addr(Node::video_master), TelegramType::request, PayloadType::link_info, ml::link_info::subtype,
-              ml::link_info::request(ml::link_info::NodeKind::audio_master)));
+              ml::link_info::request(ml::link_info::NodeKind::audio_master, this->system_configuration)));
 }
 
 // COMMAND STANDBY_0 on the audio link: take the audio bus from the video master

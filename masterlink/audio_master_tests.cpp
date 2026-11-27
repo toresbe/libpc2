@@ -83,11 +83,21 @@ namespace {
 TEST(AudioMaster, SerializedChecksumMatchesCapture) {
     // REQUEST LINK_INFO to the video master, as captured: ... 9a 00
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.listen_to_video_source(0x0b);
     ASSERT_TRUE(host.sent.size() >= 1);
     EXPECT_EQ(host.sent[0], (Bytes{0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x00, 0x9a, 0x00}));
+}
+
+TEST(AudioMaster, LinkInfoRequestFollowsSystemConfiguration) {
+    // SystemConfiguration 5 (what libpc2 sends in audio-master mode): "01 02 00", as in every
+    // configuration 5 USB capture (e.g. PC2_AM_ML_source_changes, 0.656 s)
+    FakeHost host;
+    AudioMaster am(host);
+    am.start(AudioMaster::clock::time_point{});
+    ASSERT_EQ(host.sent.size(), 3u);
+    EXPECT_EQ(host.sent[2], (Bytes{0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x02, 0x00, 0x9b, 0x00}));
 }
 
 TEST(AudioMaster, ParsesDestSourceFromRightByte) {
@@ -101,7 +111,7 @@ TEST(AudioMaster, ParsesDestSourceFromRightByte) {
 // bus arbitration with the video master, listener tracking, source change notices.
 TEST(AudioMaster, ReplaysLinkRoomConversation) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto [got, expected] = replay(am, host, conversation_137_420);
     EXPECT_EQ(got.size(), expected.size()) << diff(expected, got);
@@ -115,7 +125,7 @@ TEST(AudioMaster, ReplaysLinkRoomConversation) {
 // The audio master picks TV (a video master source), then goes to standby (735 s - 780 s)
 TEST(AudioMaster, ReplaysTvAndStandby) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     bool listening_before_standby = false;
     auto [got, expected] = replay(am, host, tv_735_780, {
@@ -130,7 +140,7 @@ TEST(AudioMaster, ReplaysTvAndStandby) {
 
 TEST(AudioMaster, ReplaysTvAndStandbySecondTime) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto [got, expected] = replay(am, host, tv_1627_1642, {
         {1627.4, [&] { am.listen_to_video_source(0x0b); }},
@@ -142,7 +152,7 @@ TEST(AudioMaster, ReplaysTvAndStandbySecondTime) {
 // A link room sends "all standby" while we distribute radio (1593 s)
 TEST(AudioMaster, ReplaysAllStandbyFromLinkRoom) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     // pre-state: distributing RADIO (0x6f) to node 01, no video master answering
     auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x6f, 0x00, 0x02, 0x01, 0x00, 0x00});
@@ -159,7 +169,7 @@ TEST(AudioMaster, ReplaysAllStandbyFromLinkRoom) {
 // While listening to the video master's TV, a room asks for A.MEM: we take the bus back (984 s)
 TEST(AudioMaster, ReplaysTakingBusBackFromVideoMaster) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.listen_to_video_source(0x0b);
     auto confirm = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x07, 0x05, 0x02, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x00});
@@ -173,7 +183,7 @@ TEST(AudioMaster, ReplaysTakingBusBackFromVideoMaster) {
 
 TEST(AudioMaster, StartupAndPeriodicClock) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.start(at(0));
     // idle SOURCE_STATUS from PC_1, CLOCK, LINK_INFO probe
@@ -190,7 +200,7 @@ TEST(AudioMaster, StartupAndPeriodicClock) {
 
 TEST(AudioMaster, NoVideoMasterMeansTakeBusAfterTimeout) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(10));
@@ -204,7 +214,7 @@ TEST(AudioMaster, NoVideoMasterMeansTakeBusAfterTimeout) {
 
 TEST(AudioMaster, LocalStandbyKeepsDistributingToListeners) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(10));
@@ -229,7 +239,7 @@ namespace {
 // The video master wants the bus for TV while we distribute N.RADIO (capture §8, 04:02:02)
 TEST(AudioMasterHandover, VideoMasterTakesTheBus) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);
     auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0xa1, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(0));
@@ -255,7 +265,7 @@ TEST(AudioMasterHandover, VideoMasterTakesTheBus) {
 // A room wants N.MUSIC while the video master plays TV on the bus (capture §8, 04:02:32)
 TEST(AudioMasterHandover, ClaimBusFromBusyVideoMaster) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);
     auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x7a, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(0));
@@ -284,7 +294,7 @@ TEST(AudioMasterHandover, ClaimBusFromBusyVideoMaster) {
 
 TEST(AudioMasterHandover, ChangeRequestTimesOutIntoClaim) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_participation(false);
     auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x7a, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(0));
@@ -300,7 +310,7 @@ TEST(AudioMasterHandover, ChangeRequestTimesOutIntoClaim) {
 // LOCK_MANAGER: we hand the lock over when we hold it, and take it before picking TV (capture §8, 04:02:17)
 TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_mode(AudioMaster::LockMode::software);
     am.listen_to_video_source(0x0b, at(0));
     ASSERT_TRUE(host.sent.size() == 1);
@@ -326,7 +336,7 @@ TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
 
 TEST(AudioMasterLock, NobodyHoldsTheLock) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.set_lock_mode(AudioMaster::LockMode::software);
     am.listen_to_video_source(0x0b, at(0));
     am.tick(at(0.6));
@@ -339,7 +349,7 @@ TEST(AudioMasterLock, NobodyHoldsTheLock) {
 // telegrams -> e4 01 (capture BM5asAM 735.844-736.906).
 TEST(AudioMasterLock, FirmwareLockRequestGrantRelease) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.listen_to_video_source(0x0b, at(0));
     EXPECT_EQ(host.lock_requests, 1);
     EXPECT_EQ(host.sent.size(), 0u);           // nothing on the bus until the lock is granted
@@ -351,7 +361,7 @@ TEST(AudioMasterLock, FirmwareLockRequestGrantRelease) {
 
 TEST(AudioMasterLock, FirmwareLockTimesOut) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     am.all_standby(at(0));
     am.tick(at(1.5));
     EXPECT_EQ(host.sent.size(), 0u);
@@ -361,7 +371,7 @@ TEST(AudioMasterLock, FirmwareLockTimesOut) {
 
 TEST(AudioMasterLock, FirmwareModeIgnoresLockTelegrams) {
     FakeHost host;
-    AudioMaster am(host);
+    AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
     auto ask = incoming({0x80, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x01, 0x01});
     am.handle(ask, at(0));
     EXPECT_EQ(host.sent.size(), 0u);

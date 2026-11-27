@@ -63,7 +63,11 @@ class AudioMaster {
 
         // Node addresses, telegram/payload types and payload layouts: see masterlink/protocol.hpp.
 
-        explicit AudioMaster(AudioMasterHost &host);
+        /*! `system_configuration` is B&O's SystemConfiguration, i.e. the mode byte libpc2 sent in the PC2's
+         *  F6 option telegram (audio-master mode sends 5, "A.OPT = 0"). B&O's software varies one LINK_INFO
+         *  byte with it, so we do too. */
+        static constexpr uint8_t default_system_configuration = 5;
+        explicit AudioMaster(AudioMasterHost &host, uint8_t system_configuration = default_system_configuration);
 
         /*! Startup broadcasts: idle source status, clock, LINK_INFO probe to the video master. */
         void start(clock::time_point now = clock::now());
@@ -139,6 +143,7 @@ class AudioMaster {
         void handle_lock(MasterlinkTelegram &t);
 
         AudioMasterHost &host;
+        const uint8_t system_configuration;
         std::recursive_mutex mutex;
 
         BusState bus_state = BusState::idle;

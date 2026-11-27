@@ -98,16 +98,22 @@ namespace ml {
             link_room_08 = 0x08,    ///< observed from room nodes; TODO: BeoIpcML never sends it
             link_room = 0x0a,       ///< SystemConfiguration 3, 7-10 (link rooms, source center)
         };
-        /*! Payload byte 1. TODO: BeoIpcML sends 02 instead in SystemConfiguration 5 ("A.OPT = 0"), and
-         *  the PC2 firmware answers 02 for a sleeping PC. Everything on the wire so far has 01. */
+        /*! Payload byte 1 of a request. BeoIpcML sends 02 in SystemConfiguration 5 ("A.OPT = 0") and 01
+         *  otherwise (decompiled, FUN_04223034). Confirmed in the USB captures: every configuration 5
+         *  capture sends "01 02 00", the configuration 6 ones "01 01 00". Answers always carry 01.
+         *  TODO: what the byte means (the PC2 firmware also answers 02 for a sleeping PC). */
         constexpr uint8_t byte1_default = 0x01;
+        constexpr uint8_t byte1_a_opt_0 = 0x02;
+        constexpr uint8_t request_byte1(uint8_t system_configuration) {
+            return system_configuration == 5 ? byte1_a_opt_0 : byte1_default;
+        }
         /*! Payload byte 2: 00 in a request; in an answer, whether that master exists (BeoIpcML answers
          *  01 as C1 only if it is configured as audio master, and always 01 as C0). */
         constexpr uint8_t absent = 0x00;
         constexpr uint8_t present = 0x01;
 
-        inline std::vector<uint8_t> request(NodeKind from) {
-            return {(uint8_t)from, byte1_default, absent};
+        inline std::vector<uint8_t> request(NodeKind from, uint8_t system_configuration) {
+            return {(uint8_t)from, request_byte1(system_configuration), absent};
         }
         inline std::vector<uint8_t> answer(NodeKind as, bool is_present) {
             return {(uint8_t)as, byte1_default, is_present ? present : absent};
