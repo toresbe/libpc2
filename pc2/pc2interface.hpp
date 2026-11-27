@@ -13,10 +13,35 @@ class PC2Interface {
     enum class address_mask_t {
         audio_master,
         beoport,
-        promisc
+        promisc,
+        source_center   ///< provide sources for another audio master (as a BeoMaster 5 does)
     };
     address_mask_t address_mask;
+    /*! Our Masterlink node address, sent to the PC2 as "80 <address> 00" at start-up. 0 = the mode's
+     *  default (audio master 0x01, Beoport 0x40, source center 0x29 = B&O's LastLegalAdr default).
+     *  Updated from the PC2's ML-status replies (byte 5), as BeoIpcML does. */
+    uint8_t ml_node_address = 0;
+    /*! Answer the PC2's temperature reports (IN 1c) with fan duty (f9), as B&O's software does.
+     *  Without this the PC2 runs its fan output at ~94 % (BeoMaster 5). */
+    bool host_fan_control = true;
     virtual void beo4_press(Beo4::keycode keycode) = 0;
+
+    // Masterlink hooks, used when address_mask is audio_master or source_center.
+    /*! A link room wants source `src`: start it and return true, or false if unavailable. */
+    virtual bool ml_start_source(uint8_t src) { (void)src; return false; }
+    /*! No link room listens to our source any more. */
+    virtual void ml_stop_source() {}
+    /*! A Beo4 key from a link room aimed at our source (e.g. next track). */
+    virtual void ml_source_key(uint8_t src, uint8_t key) { (void)src; (void)key; }
+    /*! "All standby" was sent on the link. */
+    virtual void ml_link_standby() {}
+
+    /*! The PC2 reports a USB wake-up: by_remote = it woke the PC because of a remote key (raw
+     *  packet FF FF FF FF), otherwise the bus resumed by itself (FF FC FE FF). */
+    virtual void pc2_wakeup(bool by_remote) { (void)by_remote; }
+
+    /*! Temperature report from the PC2 (IN 1c, whole degrees C, ~every 30 s). */
+    virtual void pc2_temperature(int8_t celsius) { (void)celsius; }
     Beolink::LocalSourceList list;
 };
 

@@ -45,13 +45,16 @@ void PC2Mixer::adjust_volume(int adjustment) {
 }
 
 void PC2Mixer::send_routing_state() {
-    // For an as-yet-unknown reason, when the device is neither transmitting
-    // or distributing, software always seems to assert the fourth byte.
-    // I don't know what it does and have not examined closely what 
-    // effect it has.
+    // B&O's software sends E7 01 (and sets the last byte of E5) only when no audio path is active;
+    // playing Masterlink audio locally (E5 04 ...) counts as active (captures: E7 00 + E5 04 00 00 00).
+    // Firmware meaning (reports/pc2-firmware.md §2): E7 00 makes the PC2 also receive ALL_LINK (0x83)
+    // telegrams, E7 01 stops that - needed while we take part in distribution. E5: byte 0 selects the
+    // local output (01 PC, 04 Masterlink), byte 1 distributes PC audio on Masterlink; bytes 2-3 are
+    // ignored by firmware V0236. Never send E7 FF: it reboots the PC2.
     uint8_t muted = 0x00;
 
-    if(! (this->state.distributing_on_ml || this->state.transmitting_locally)) 
+    if(! (this->state.distributing_on_ml || this->state.transmitting_locally
+                || this->state.transmitting_from_ml))
         muted = 0x01;
 
     uint8_t distribute = this->state.distributing_on_ml ? 0x01 : 0x00;
@@ -102,12 +105,21 @@ void PC2Mixer::ml_distribute(bool transmit_enabled) {
     }
 };
 
-void PC2Mixer::set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness) {
-    // Loudness equalization is the most significant byte of the 
-    // volume control byte.
-    uint8_t vol_byte = volume | (loudness ? 0x80 : 0x00);
+static int clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-    this->pc2->device->send_message({ 0xe3, vol_byte, bass, treble, balance });
+void PC2Mixer::set_parameters(int volume, int treble, int bass, int balance, bool loudness) {
+    // Firmware (reports/pc2-firmware.md §3): volume 0..0x5a, bass/treble -8..+8 (1 dB steps on the
+    // TDA7409), balance -9..+9 (+/-9 mutes a side). Out-of-range values are dropped, not clamped, by
+    // the firmware - an out-of-range tone value even blocks its loudness recomputation - so clamp here.
+    // Loudness is bit 7 of the volume byte.
+    uint8_t vol_byte = (uint8_t)clamp(volume, 0, 0x5a) | (loudness ? 0x80 : 0x00);
+    this->pc2->device->send_message({ 0xe3, vol_byte,
+            (uint8_t)(int8_t)clamp(bass, -8, 8), (uint8_t)(int8_t)clamp(treble, -8, 8),
+            (uint8_t)(int8_t)clamp(balance, -9, 9) });
+}
+
+void PC2Mixer::set_volume(int volume) {
+    this->pc2->device->send_message({ 0xeb, (uint8_t)clamp(volume, 0, 0x5a) });
 }
 
 void PC2Mixer::process_mixer_state(const PC2Message & tgram) {

@@ -44,6 +44,12 @@ namespace Beolink {
 #include "pc2/pc2device.hpp"
 #include "pc2/pc2interface.hpp"
 #include "pc2/mixer.hpp"
+#include "pc2/fan_control.hpp"
+class AudioMaster;
+class AudioMasterHost;
+class SourceCenter;
+#include <thread>
+#include <atomic>
 
 #define ML_STATE_STOPPED 0x01
 #define ML_STATE_PLAYING 0x02
@@ -60,8 +66,21 @@ class TelegramRequestTimeout: public std::exception {};
  */
 class PC2Beolink {
     PC2 *pc2;
+    AudioMasterHost *audio_master_host = nullptr;
+    std::thread *ticker = nullptr;
+    std::atomic<bool> ticking{false};
     public:
     PC2Beolink (PC2 * pc2);
+    ~PC2Beolink();
+    /*! Masterlink audio master logic; created by start_audio_master() in audio master mode. */
+    AudioMaster *audio_master = nullptr;
+    void start_audio_master();
+    /*! Source center logic; created by start_source_center() in source_center mode. */
+    SourceCenter *source_center = nullptr;
+    void start_source_center();
+    private:
+    void start_ticker();
+    public:
     pending_request_queue_t pending_request_queue;
     void handle_ml_request(MasterlinkTelegram & mlt);
     void handle_ml_status(MasterlinkTelegram & mlt);
@@ -93,6 +112,7 @@ class PC2 {
     PC2Device *device;
     PC2Mixer *mixer;
     PC2Beolink *beolink;
+    PC2FanControl fan;   ///< host side of the thermal loop (IN 1c -> f9)
 
     PC2(PC2Interface * interface);
 

@@ -10,5 +10,7 @@ class PC2MessageFragmentAssembler {
     public:
         void operator<< (const PC2Message &fragment);
         bool has_complete_message();
+        /*! True while a multi-packet message is being reassembled. */
+        bool in_progress() { return !reassembly_buffer.empty(); }
         PC2Message get_message();
 };

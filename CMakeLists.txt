@@ -50,18 +50,27 @@ list(APPEND SRC_FILES
     masterlink/node.cpp
     masterlink/analysis.cpp
     masterlink/pprint.cpp
+    masterlink/audio_master.cpp
+    masterlink/source_center.cpp
     pc2/mixer.cpp
     pc2/pc2device.cpp
     pc2/pc2_usb_io.cpp
     pc2/pc2.cpp
     pc2/mailbox.cpp
     pc2/fragment_assembler.cpp
+    pc2/telegram_pacer.cpp
+    pc2/fan_control.cpp
     #    utils/pcap_reader/pcapreader.cpp
 )
 
 list(APPEND TESTING_SRC_FILES 
     pc2/mailbox_tests.cpp
     pc2/fragment_assembler_tests.cpp
+    pc2/telegram_pacer_tests.cpp
+    pc2/wakeup_tests.cpp
+    pc2/fan_control_tests.cpp
+    masterlink/audio_master_tests.cpp
+    masterlink/source_center_tests.cpp
     )
 
 

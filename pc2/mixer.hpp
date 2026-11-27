@@ -20,10 +20,12 @@ class PC2Mixer {
         bool distributing_on_ml;            ///< Distributing local audio over Masterlink
         bool speakers_muted;                ///< Speaker output muted
         bool speakers_on;                   ///< Speaker power-on signal
-    } state;
+    } state = {};
     PC2Mixer(PC2 *pc2);
     void send_routing_state();
     void adjust_volume(int adjustment);
+    /*! Absolute volume (eb 00..5a; 1 dB per step, 0 = mute). Clamped. */
+    void set_volume(int volume);
     void ml_distribute(bool transmit_enabled);
     void transmit_locally(bool transmit_enabled);
     void transmit_from_ml(bool transmit_enabled);
@@ -31,6 +33,10 @@ class PC2Mixer {
     void speaker_power(bool spakers_powered);
     void process_mixer_state(const PC2Message & tgram);
     void process_headphone_state(const PC2Message & tgram);
-    void set_parameters(uint8_t volume, uint8_t treble, uint8_t bass, uint8_t balance, bool loudness);
+    /*! e3: sets the volume TARGET (applied by the fade started with ea 81), bass, treble, balance and
+     *  loudness. NOTE the argument order (volume, TREBLE, BASS, ...); on the wire it is
+     *  e3 [vol|loudness<<7] [bass] [treble] [balance]. Values are clamped to what the firmware accepts
+     *  (volume 0..0x5a, bass/treble -8..+8 dB, balance -9..+9); it silently drops out-of-range values. */
+    void set_parameters(int volume, int treble, int bass, int balance, bool loudness);
 };
 #endif
