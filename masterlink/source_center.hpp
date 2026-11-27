@@ -4,12 +4,12 @@
  *  This is how a BeoMaster 5 behaves when another product is the audio master (observed live on a
  *  system with a BeoSound 3000 as audio master and a Beosystem 3 as video master; see
  *  reports/masterlink-protocol.md §6-§8). It never arbitrates for the bus. The audio master orders it:
- *    REQUEST SOURCE_CONNECT (0x6C), dest_src = source   -> start distributing that source
- *    COMMAND STANDBY_0 (0x10),     dest_src = source   -> stop it
- *    COMMAND STANDBY_1 (0x11),     dest_src = source   -> release it
- *    COMMAND SOURCE_CONTROL (0x0D), dest_src = source  -> a Beo4 key for it
+ *    REQUEST SOURCE_CONNECT, dest_src = source   -> start distributing that source
+ *    COMMAND STANDBY_0,      dest_src = source   -> stop it
+ *    COMMAND STANDBY_1,      dest_src = source   -> release it
+ *    COMMAND SOURCE_CONTROL, dest_src = source   -> a Beo4 key for it
  *  Its own panel does not request sources over the link; it sends the room's master the Beo4 key a
- *  remote would (COMMAND 0x20, IR_SIMUL_LOW), see send_remote_key().
+ *  remote would (COMMAND IR_SIMUL_LOW), see send_remote_key(). Values: masterlink/protocol.hpp.
  *
  *  Like AudioMaster, it holds no hardware or thread state: telegrams in through handle(), time through
  *  tick(), effects out through AudioMasterHost (the same host interface).
@@ -28,10 +28,7 @@ class SourceCenter {
     public:
         typedef std::chrono::steady_clock clock;
 
-        static constexpr uint8_t addr_source_center = 0xc2;    ///< PC_1 / "SOURCE_CENTER"
-        static constexpr uint8_t pt_source_connect = 0x6c;     ///< B&O: SOURCE_CONNECT_COMMAND / _STATUS
-        static constexpr uint8_t pt_ir_simul = 0x20;           ///< B&O: IR_SIMUL_LOW (simulated Beo4 key)
-        static constexpr uint8_t src_pc = 0x47;
+        // Addresses, types and payload layouts: see masterlink/protocol.hpp.
 
         explicit SourceCenter(AudioMasterHost &host);
 
@@ -45,7 +42,7 @@ class SourceCenter {
          *  (e.g. dest = V_MASTER, key 0x94 "N.MUSIC", 0x80 "TV", 0x64 volume down, 0x0c standby).
          *  Observed telegram: dest C1 01 0A 00 47 00 20 05 02 | 00 01 ff ff <key>, sent from the
          *  audio master's address C1 (as captured; see report §7). */
-        void send_remote_key(uint8_t dest, uint8_t key, uint8_t from = 0xc1);
+        void send_remote_key(uint8_t dest, uint8_t key, uint8_t from = ml::addr(ml::Node::audio_master));
 
         /*! Something plays locally (e.g. picked on the panel). While set, stopping a link source does
          *  not announce the idle status: observed when the panel's N.RADIO was still active (§8), vs
@@ -57,10 +54,11 @@ class SourceCenter {
         static constexpr std::chrono::milliseconds idle_status_delay{2000};  ///< observed ~2 s
 
     private:
-        MasterlinkTelegram make(uint8_t dest, uint8_t type, uint8_t ptype, uint8_t subtype,
+        MasterlinkTelegram make(uint8_t dest, ml::TelegramType type, ml::PayloadType ptype, uint8_t subtype,
                                 std::vector<uint8_t> payload, uint8_t src_src = 0, uint8_t dest_src = 0,
-                                uint8_t from = addr_source_center);
+                                uint8_t from = ml::addr(ml::Node::source_center));
         void send(MasterlinkTelegram tgram);
+        void send_source_status(uint8_t src, std::vector<uint8_t> payload);
         void send_status_active(uint8_t src);
         void send_status_stopped(uint8_t src);
         void send_status_idle();
