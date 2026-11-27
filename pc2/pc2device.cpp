@@ -43,7 +43,26 @@ void PC2Device::event_loop() {
     BOOST_LOG_TRIVIAL(info) << "PC2Device event thread running...";
     while(1) {
         auto message_future = this->usb_device.read();
-        message_assembler << message_future.get();
+        PC2Message fragment = message_future.get();
+
+        // Raw wake-up packets (no 60 ... 61 framing), only between messages
+        if (!message_assembler.in_progress()) {
+            PC2Wakeup wakeup = pc2_wakeup_packet(fragment);
+            if (wakeup != PC2Wakeup::none) {
+                bool by_remote = (wakeup == PC2Wakeup::by_remote);
+                BOOST_LOG_TRIVIAL(info) << (by_remote ? "PC2 woke the PC (remote key)" : "PC2: USB bus resumed");
+                this->pc2->interface->pc2_wakeup(by_remote);
+                continue;
+            }
+        }
+
+        try {
+            message_assembler << fragment;
+        } catch (const std::runtime_error &e) {
+            // A malformed packet used to end the event thread (and the program); log and go on
+            BOOST_LOG_TRIVIAL(warning) << "Dropping malformed PC2 packet: " << e.what();
+            continue;
+        }
         if(message_assembler.has_complete_message()) {
             PC2Message message = message_assembler.get_message();
             // Type 0x01 is the PC2's status answer to a Masterlink telegram we sent

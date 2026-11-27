@@ -15,6 +15,7 @@ class PC2Device;
 #include "pc2/fragment_assembler.hpp"
 #include "pc2/mailbox.hpp"
 #include "pc2/telegram_pacer.hpp"
+#include "pc2/wakeup.hpp"
 
 /**! \brief Higher-level PC2 I/O
  */

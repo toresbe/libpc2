@@ -66,6 +66,7 @@ list(APPEND TESTING_SRC_FILES
     pc2/mailbox_tests.cpp
     pc2/fragment_assembler_tests.cpp
     pc2/telegram_pacer_tests.cpp
+    pc2/wakeup_tests.cpp
     masterlink/audio_master_tests.cpp
     masterlink/source_center_tests.cpp
     )

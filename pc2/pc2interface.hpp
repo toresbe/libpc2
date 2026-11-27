@@ -32,6 +32,10 @@ class PC2Interface {
     virtual void ml_source_key(uint8_t src, uint8_t key) { (void)src; (void)key; }
     /*! "All standby" was sent on the link. */
     virtual void ml_link_standby() {}
+
+    /*! The PC2 reports a USB wake-up: by_remote = it woke the PC because of a remote key (raw
+     *  packet FF FF FF FF), otherwise the bus resumed by itself (FF FC FE FF). */
+    virtual void pc2_wakeup(bool by_remote) { (void)by_remote; }
     Beolink::LocalSourceList list;
 };
 
