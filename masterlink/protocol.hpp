@@ -101,6 +101,7 @@ namespace ml {
         /*! Payload byte 1 of a request. BeoIpcML sends 02 in SystemConfiguration 5 ("A.OPT = 0") and 01
          *  otherwise (decompiled, FUN_04223034). Confirmed in the USB captures: every configuration 5
          *  capture sends "01 02 00", the configuration 6 ones "01 01 00". Answers always carry 01.
+         *  Room nodes send "08 01 00" (live sniffs); every answer seen on the wire carries 01.
          *  TODO: what the byte means (the PC2 firmware also answers 02 for a sleeping PC). */
         constexpr uint8_t byte1_default = 0x01;
         constexpr uint8_t byte1_a_opt_0 = 0x02;
@@ -121,19 +122,28 @@ namespace ml {
     }
 
     // ------------------------------------------------------------------ AUDIO_BUS (0x08)
-    /*! "Are you using the audio bus?" Decompiled: FUN_04224950 (request), FUN_04224e7c (answer). */
+    /*! "Are you using the audio bus?" Decompiled: FUN_04224950 (request), FUN_04224e7c (answer),
+     *  parser at 0x42247a6. In BeoIpcML this is the master's **Link Log** (class with the log strings
+     *  "RequestLinkLog", "SetSource: LinkLog is not Active", "SetRecordLock: LinkLog is not Active";
+     *  "** Request LinkLog from VM!"): the answer says which source the master's link log holds. */
     namespace audio_bus {
         constexpr uint8_t subtype_request = 1;      ///< empty payload
-        constexpr uint8_t subtype_free = 4;         ///< answer, empty payload: not distributing
+        constexpr uint8_t subtype_free = 4;         ///< answer, empty payload: the link log holds no source
+        constexpr uint8_t subtype_busy_5 = 5;       ///< answer; BeoIpcML parses it exactly like 6 (never seen sent)
         constexpr uint8_t subtype_busy = 6;         ///< answer: distributing, payload below
-        /*! Busy payload: 02 01 <flag> <source>. TODO: the meaning of 02 and 01. <flag> is a BeoIpcML
-         *  object field (always 00 in captures). A BeoSound 3000 appends a fifth byte, 01. */
+        /*! Busy payload: 02 01 <record lock> <source>. A BeoSound 3000 appends a fifth byte, 01.
+         *  BeoIpcML's parser ignores bytes 2-3 unless bytes 0-1 are exactly 02 01, so they work as a
+         *  format marker. TODO: what 02 and 01 stand for. */
         constexpr uint8_t busy_byte0 = 0x02;
         constexpr uint8_t busy_byte1 = 0x01;
-        constexpr uint8_t busy_flag_default = 0x00;  ///< TODO
+        /*! Byte 2: the link log's record lock, 01 = locked (decompiled: TLinkLog.SetRecordLock sets the
+         *  field the builder copies; the parser reads it back as "== 01"). 00 in every capture. */
+        constexpr uint8_t record_lock_off = 0x00;
+        constexpr uint8_t record_lock_on = 0x01;
+        constexpr uint8_t busy_flag_default = record_lock_off;     ///< old name
 
-        inline std::vector<uint8_t> busy(uint8_t src) {
-            return {busy_byte0, busy_byte1, busy_flag_default, src};
+        inline std::vector<uint8_t> busy(uint8_t src, bool record_lock = false) {
+            return {busy_byte0, busy_byte1, record_lock ? record_lock_on : record_lock_off, src};
         }
     }
 
@@ -226,55 +236,113 @@ namespace ml {
             system_status = 4,      ///< B&O: SOURCE_SYSTEM_STATUS (the one we send)
         };
 
-        /*! Source state, payload byte 11. Inferred: the field is the same BeoIpcML object field as
-         *  PRI_SYSTEM_STATUS byte 3, and its three observed values match the three forms. */
-        enum class State : uint8_t {
-            idle = 0x00,
+        /*! Byte 11: the source's activity (BeoIpcML field +0x4c, also PRI_SYSTEM_STATUS byte 3).
+         *  observed: BeoIpcML sends 00, 02 and 06. The other values and all the names are the
+         *  community decoder's table (giachello/mlgw, ml_state_dict), not B&O's. */
+        enum class Activity : uint8_t {
+            unknown = 0x00,         ///< what BeoIpcML sends for an idle PC source
+            stop = 0x01,
             playing = 0x02,
-            stopped = 0x06,         ///< the "everything switched off" form
+            fast_forward = 0x03,
+            rewind = 0x04,
+            record_lock = 0x05,
+            standby = 0x06,         ///< the "everything switched off" form
+            load_no_media = 0x07,
+            still_picture = 0x08,
+            scan_forward = 0x14,
+            scan_reverse = 0x15,
+            blank = 0xff,
+            // older libpc2 names
+            idle = unknown,
+            stopped = standby,
+        };
+        using State = Activity;
+
+        /*! Byte 12: what kind of source (community: "01 audio / 02 video / ff undefined").
+         *  Decompiled: 01 if the device object is an audio source (+0x45), else 02. For the PC source
+         *  (0x47, "NAVIGATOR") BeoIpcML overwrites it with its Navigator State when that is 1-3 (+0x5c,
+         *  logged as "Navigator State="), so PC captures show 01 or 02 there. */
+        enum class SourceType : uint8_t {
+            audio = 0x01,
+            video = 0x02,
+            undefined = 0xff,
         };
 
-        /*! Bytes 2-5: two 16-bit masks. The second is 0x1fbe, built by OR-ing bits 1-5, 7-12 one by one;
-         *  the first is a function of it that is 0000 in every capture. TODO: what the bits stand for. */
-        constexpr uint8_t mask_a_hi = 0x00, mask_a_lo = 0x00;
-        constexpr uint8_t mask_b_hi = 0x1f, mask_b_lo = 0xbe;
+        /*! Bytes 13 and 24: the screen (picture) format. Decompiled: the SOURCE_CONNECT handler at
+         *  0x4233c16 logs this value as "ScreenFormat=" and passes it to the builder for both bytes.
+         *  Names from the community decoder (ml_pictureformatdict); BeoIpcML maps the requested format
+         *  to 02, 03 or 04 (0x42342dc). */
+        enum class ScreenFormat : uint8_t {
+            not_known = 0x00,
+            known_by_decoder = 0x01,
+            format_4_3 = 0x02,
+            format_16_9 = 0x03,
+            letterbox_middle = 0x04,
+            letterbox_top = 0x05,
+            letterbox_bottom = 0x06,
+            blank = 0xff,
+        };
 
-        /*! SOURCE_SYSTEM_STATUS for `src` in state `state` (idle or playing): 31 bytes.
-         *  The TODO bytes are constants or caller parameters in BeoIpcML; the values are what it sends. */
+        /*! Bytes 2-5: one 32-bit field mask, big-endian. Decompiled: the builder ORs bits 1-5 and 7-12
+         *  into a 32-bit register and writes HIWORD (FUN_04197860 is `shr eax,16`) then LOWORD, so bytes
+         *  2-3 are 0000 because no bit above 15 is set. The local-playback form uses 0x00004028 and a
+         *  BeoSound 3000 sends 0x00000008. Inferred: one bit per payload field that is valid.
+         *  TODO: which bit is which field. */
+        constexpr uint32_t mask_system_status = 0x00001fbe;
+        constexpr uint8_t mask_a_hi = 0x00, mask_a_lo = 0x00;   ///< bytes 2-3 (high half)
+        constexpr uint8_t mask_b_hi = 0x1f, mask_b_lo = 0xbe;   ///< bytes 4-5 (low half)
+
+        /*! Byte 1. observed: 01 from BeoIpcML's builder (a constant), 02 in the BM5's local-playback
+         *  form (mask 0x4028), 01 or 09 from a BeoSound 3000. TODO: meaning. */
+        constexpr uint8_t byte1 = 0x01;
+
+        /*! Byte 30: the speaker mode. Decompiled: the builder's last argument comes from FUN_0422d1e8,
+         *  which returns field +0x64 and logs it as "NU SKRIVER VI SPEAKERMODE: " (Danish: "now we
+         *  write SPEAKERMODE"). 00 normally, 01 in some captures. */
+        constexpr uint8_t speaker_mode_default = 0x00;
+
+        /*! SOURCE_SYSTEM_STATUS for `src` with activity `state` (unknown or playing): 31 bytes.
+         *  Decompiled: TPCgenericDevice VMT slot 0x70 (0x422c3b8). The callers that send the plain
+         *  status pass screen format 00, byte 15 = 01, byte 25 = 01, speaker mode 00. */
         inline std::vector<uint8_t> system_status(uint8_t src, State state) {
-            return {src, 0x01,                      // 0x01: TODO (constant)
+            return {src, byte1,
                     mask_a_hi, mask_a_lo, mask_b_hi, mask_b_lo,
                     0x01,                           // TODO (constant)
-                    0x00, 0x00,                     // 16-bit field (BeoIpcML +0x50; also in PRI_SYSTEM)
-                    0x00,                           // field +0x4d (also PRI_SYSTEM byte 2); TODO
+                    0x00, 0x00,                     // medium position, 16 bits (BeoIpcML +0x50; community:
+                                                    // "source_medium")
+                    0x00,                           // channel / track (+0x4d; also PRI_SYSTEM byte 2)
                     0xff,                           // TODO (constant)
-                    (uint8_t)state,
-                    0x01,                           // 1 = audio source, 2 = video (for PC: 1-3); TODO
-                    0x00,                           // caller parameter; TODO
+                    (uint8_t)state,                 // activity
+                    (uint8_t)SourceType::audio,     // source type (PC: Navigator State)
+                    (uint8_t)ScreenFormat::not_known,
                     0x03,                           // TODO (constant)
-                    0x01,                           // caller parameter; TODO
+                    0x01,                           // caller parameter: 01, or 03 when a SOURCE_CONNECT
+                                                    // asked for a different format than last time; TODO
                     0x01, 0x01, 0x03, 0x00, 0x02,   // TODO (constants)
                     0x00, 0x00, 0x00,
-                    0x00,                           // caller parameter (same as byte 13); TODO
-                    0x01,                           // caller parameter; TODO
+                    (uint8_t)ScreenFormat::not_known,   // screen format again
+                    0x01,                           // caller parameter (from the SOURCE_CONNECT handler's
+                                                    // 0x42342dc, else 01); TODO
                     0x00, 0x00, 0x00, 0x00,
-                    0x00};                          // caller parameter; TODO
+                    speaker_mode_default};
         }
-        /*! The "stopped" form (26 bytes): the fields are ff and the state is stopped. */
+        /*! The standby form (26 bytes): every field ff and activity standby (06). */
         inline std::vector<uint8_t> stopped(uint8_t src) {
-            return {src, 0x01, mask_a_hi, mask_a_lo, mask_b_hi, mask_b_lo, 0x01,
+            return {src, byte1, mask_a_hi, mask_a_lo, mask_b_hi, mask_b_lo, 0x01,
                     0xff, 0xff, 0xff, 0xff,
-                    (uint8_t)State::stopped,
+                    (uint8_t)Activity::standby,
                     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
                     0x00, 0x00, 0x00,
-                    0x00,                           // caller parameter (as byte 13 above); TODO
+                    (uint8_t)ScreenFormat::not_known,   // screen format (as byte 13 above)
                     0x01};                          // caller parameter (as byte 25 above); TODO
         }
     }
 
     // ------------------------------------------------------------------ PRI_SYSTEM_STATUS (0x82)
-    /*! Decompiled: code at 0x422c2fc. Payload: 06 <src> <field 4d> <state> 00 00 00 <16-bit field 50> 01,
-     *  where <field 4d>, <state> and the 16-bit field are the same values as in SOURCE_STATUS. */
+    /*! Decompiled: code at 0x422c2fc. Payload: 06 <src> <channel/track> <activity> 00 00 00 <medium
+     *  position, 16 bits> 01, the same BeoIpcML fields as in SOURCE_STATUS (+0x4d, +0x4c, +0x50).
+     *  The community decoder reads bytes 1-3 the same way (TRACK_INFO_LONG: source, channel_track,
+     *  activity). */
     namespace pri_system {
         constexpr uint8_t subtype_audio = 1;    ///< sent for an audio source (BeoIpcML: field 45 set)
         constexpr uint8_t subtype_video = 2;    ///< otherwise; observed from a video master
@@ -336,14 +404,32 @@ namespace ml {
     }
 
     // ------------------------------------------------------------------ LOCK_MANAGER (0x5C)
-    /*! The bus lock ("function key"). Decompiled: FUN_04223f74 (REQUEST/COMMAND), FUN_04223fe8 (STATUS);
-     *  the PC2 firmware runs the same exchange (pc2-firmware.md). Payload is always "01". */
+    /*! The bus lock (B&O: "function key", class TFunctionKey). Decompiled: FUN_04223f74 (REQUEST /
+     *  COMMAND), FUN_04223fe8 (STATUS), FUN_04223864 (receive), timers at 0x4223e3c and 0x4223f48; the
+     *  PC2 firmware runs the same exchange (pc2-firmware.md). Payload is always "01".
+     *
+     *  The exchange, as BeoIpcML runs it:
+     *  1. The node that wants the key sends REQUEST 1 to ALL and arms a timer (500 ms; 15 s in the
+     *     mode where it may not take the key itself).
+     *  2. The holder answers STATUS 2 (it gives the key away) if no local user still owns it, otherwise
+     *     STATUS 3.
+     *  3. On STATUS 2 the requester sends COMMAND 4 back to the giver and owns the key.
+     *  4. If the timer runs out it sends COMMAND 5 to ALL and, 300 ms later, REQUEST 1 again. After more
+     *     than 5 tries it takes the key ("We will steal Function Key after having retried for > 5
+     *     times"); in the 15 s mode it gives up ("Timeout on Function Key Request", key denied).
+     *  Live sniffs show only 1, 2 and 4. The names of 3-5 match the community decoder's table
+     *  (giachello/mlgw: Transfer Impossible, Key Received, Timeout). */
     namespace lock_manager {
-        constexpr uint8_t subtype_request = 1;          ///< REQUEST to ALL: who holds the lock?
-        constexpr uint8_t subtype_holder = 2;           ///< STATUS from the holder
-        constexpr uint8_t subtype_holder_alt = 3;       ///< STATUS, other form; TODO
-        constexpr uint8_t subtype_take = 4;             ///< COMMAND to the holder: hand it over
-        constexpr uint8_t subtype_command_alt = 5;      ///< COMMAND, other form; TODO
+        constexpr uint8_t subtype_request = 1;              ///< REQUEST to ALL: who holds the key?
+        constexpr uint8_t subtype_key_transfer = 2;         ///< STATUS: B&O KEY_TRANSFER ("LOCK_MANAGER_STATUS(KEY_TRANSFER)")
+        constexpr uint8_t subtype_transfer_impossible = 3;  ///< STATUS: the holder still uses it
+        constexpr uint8_t subtype_key_received = 4;         ///< COMMAND to the giver (the PC2 also sends it to ALL when it grants itself the key)
+        constexpr uint8_t subtype_timeout = 5;              ///< COMMAND to ALL: nobody answered the REQUEST
+        // older libpc2 names
+        constexpr uint8_t subtype_holder = subtype_key_transfer;
+        constexpr uint8_t subtype_holder_alt = subtype_transfer_impossible;
+        constexpr uint8_t subtype_take = subtype_key_received;
+        constexpr uint8_t subtype_command_alt = subtype_timeout;
         constexpr uint8_t payload = 0x01;
     }
 
@@ -355,11 +441,22 @@ namespace ml {
     }
 
     // ------------------------------------------------------------------ IR_SIMUL_LOW (0x20)
-    /*! A Beo4 key pressed on another node: 00 01 ff ff <key>. Observed (as libpc2's send_beo4_code()). */
+    /*! A Beo4 key pressed on another node: 00 <destination> ff ff <key>. Observed (as libpc2's
+     *  send_beo4_code()). Byte 1 is the destination selector, as the community decoder reads it
+     *  (ml_destselectordict) and as the MLGW uses it in today's sniffs: it sends "00 00 00 00 80" (TV,
+     *  video source) and "00 01 00 00 0c" (standby, audio source). */
     namespace ir_simul {
         constexpr uint8_t subtype = 2;
-        inline std::vector<uint8_t> key(uint8_t beo4_key) {
-            return {0x00, 0x01, 0xff, 0xff, beo4_key};  // TODO: the first four bytes
+        enum class Destination : uint8_t {
+            video_source = 0x00,
+            audio_source = 0x01,
+            v_tape = 0x05,          ///< community: "V.TAPE/V.MEM"
+            all_products = 0x0f,
+            mlgw = 0x1b,
+        };
+        inline std::vector<uint8_t> key(uint8_t beo4_key, Destination to = Destination::audio_source) {
+            // TODO: bytes 0, 2 and 3 (B&O's AM sends 00 .. ff ff, the MLGW 00 .. 00 00)
+            return {0x00, (uint8_t)to, 0xff, 0xff, beo4_key};
         }
     }
 

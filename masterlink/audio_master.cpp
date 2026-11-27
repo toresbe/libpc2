@@ -156,8 +156,9 @@ void AudioMaster::bus_lock_granted() {
 }
 bool AudioMaster::holds_bus_lock() { std::scoped_lock lk(this->mutex); return this->holds_lock; }
 
-// LOCK_MANAGER: broadcast REQUEST (subtype_request); the current holder answers STATUS (subtype_holder);
-// we take it over with COMMAND (subtype_take) to the holder. If nobody answers, nobody holds it.
+// LOCK_MANAGER: broadcast REQUEST (subtype_request); the current holder answers STATUS KEY_TRANSFER
+// (or TRANSFER_IMPOSSIBLE if it still needs the key); we confirm with COMMAND KEY_RECEIVED to the giver.
+// If nobody answers, nobody holds it.
 void AudioMaster::with_lock(std::function<void()> action, clock::time_point now) {
     if (this->lock_mode == LockMode::off || this->holds_lock) { action(); return; }
     this->lock_waiters.push_back(action);
@@ -193,11 +194,12 @@ void AudioMaster::handle_lock(MasterlinkTelegram &t) {
         // Someone wants the lock; answer if we hold it
         if (this->holds_lock && t.src_node != addr(Node::audio_master))
             send(make(t.src_node, TelegramType::status, PayloadType::lock_manager,
-                      ml::lock_manager::subtype_holder, {ml::lock_manager::payload}));
-    } else if (type == TelegramType::status && to_us && this->lock_pending) {
-        // The holder hands it to us
+                      ml::lock_manager::subtype_key_transfer, {ml::lock_manager::payload}));
+    } else if (type == TelegramType::status && to_us && this->lock_pending
+               && t.payload_version == ml::lock_manager::subtype_key_transfer) {
+        // The holder hands it to us (TRANSFER_IMPOSSIBLE leaves us waiting until the lock timeout)
         send(make(t.src_node, TelegramType::command, PayloadType::lock_manager,
-                  ml::lock_manager::subtype_take, {ml::lock_manager::payload}));
+                  ml::lock_manager::subtype_key_received, {ml::lock_manager::payload}));
         lock_acquired();
     } else if (type == TelegramType::command && to_us) {
         // We handed it over
