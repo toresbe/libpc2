@@ -334,6 +334,20 @@ TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
     EXPECT_EQ(am.holds_bus_lock(), false);
 }
 
+// The holder answers TRANSFER_IMPOSSIBLE (STATUS 3, as BeoIpcML does while a local user still owns the
+// key): that is not a grant, so we send no KEY_RECEIVED and wait for the lock timeout
+TEST(AudioMasterLock, TransferImpossibleIsNotAGrant) {
+    FakeHost host;
+    AudioMaster am(host, 6);
+    am.set_lock_mode(AudioMaster::LockMode::software);
+    am.listen_to_video_source(0x0b, at(0));
+    host.sent.clear();
+    auto refused = incoming({0xc1, 0x04, 0x01, 0x14, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x03, 0x01});
+    am.handle(refused, at(0.02));
+    EXPECT_EQ(host.sent.size(), 0u);
+    EXPECT_EQ(am.holds_bus_lock(), false);
+}
+
 TEST(AudioMasterLock, NobodyHoldsTheLock) {
     FakeHost host;
     AudioMaster am(host, 6);   // the captures were taken in SystemConfiguration 6
