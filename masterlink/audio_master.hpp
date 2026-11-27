@@ -20,6 +20,7 @@
 #include <set>
 #include <vector>
 
+#include "masterlink/protocol.hpp"
 #include "masterlink/telegram.hpp"
 
 /*! What the audio master needs from its surroundings. */
@@ -60,29 +61,7 @@ class AudioMaster {
             listening_to_vm,    ///< we play a video master source (e.g. TV) from the bus
         };
 
-        // Node addresses
-        static constexpr uint8_t addr_all = 0x80;
-        static constexpr uint8_t addr_all_link = 0x83;   ///< B&O: ALL_SOURCE_USERS
-        static constexpr uint8_t addr_video_master = 0xc0;
-        static constexpr uint8_t addr_audio_master = 0xc1;
-        static constexpr uint8_t addr_pc_1 = 0xc2;
-
-        // Payload types
-        static constexpr uint8_t pt_link_info = 0x04;      ///< libpc2: MASTER_PRESENT
-        static constexpr uint8_t pt_audio_bus = 0x08;
-        static constexpr uint8_t pt_source_control = 0x0d; ///< libpc2: BEO4_KEY
-        static constexpr uint8_t pt_standby_0 = 0x10;      ///< libpc2: STANDBY
-        static constexpr uint8_t pt_standby_1 = 0x11;      ///< libpc2: RELEASE
-        static constexpr uint8_t pt_local_source = 0x30;   ///< unnamed in B&O's table
-        static constexpr uint8_t pt_clock = 0x40;          ///< B&O: PROGRAMMING_STATUS
-        static constexpr uint8_t pt_link_connect = 0x45;   ///< B&O: LINK_CONNECT_COMMAND_1 (libpc2: GOTO_SOURCE)
-        static constexpr uint8_t pt_link_connect_status = 0x44; ///< B&O: LINK_CONNECT_STATUS (libpc2: TRACK_INFO)
-        static constexpr uint8_t pt_pri_system = 0x82;     ///< B&O: PRI_SYSTEM_STATUS (libpc2: TRACK_INFO_LONG)
-        static constexpr uint8_t pt_source_status = 0x87;  ///< B&O: SOURCE_STATUS (libpc2: STATUS_INFO)
-        static constexpr uint8_t pt_bus_released = 0x1c;   ///< unnamed; confirms the audio bus was handed over
-        static constexpr uint8_t pt_lock_manager = 0x5c;   ///< B&O: LOCK_MANAGER (bus lock rooms take first)
-
-        static constexpr uint8_t src_pc = 0x47;
+        // Node addresses, telegram/payload types and payload layouts: see masterlink/protocol.hpp.
 
         explicit AudioMaster(AudioMasterHost &host);
 
@@ -103,7 +82,7 @@ class AudioMaster {
         void local_standby(clock::time_point now = clock::now());
         /*! "All standby": tell every node to switch off, and stop everything. */
         void all_standby(clock::time_point now = clock::now());
-        /*! How the LOCK_MANAGER (0x5C) bus lock is taken before TV / all-standby:
+        /*! How the LOCK_MANAGER (ml::PayloadType::lock_manager) bus lock is taken before TV / all-standby:
          *  - firmware (default): the PC2 firmware runs the lock protocol and consumes all 0x5C telegrams
          *    whenever the host started it with "80 <node> 00" (as libpc2 does). We ask with 24, wait for
          *    IN 44 01 (bus_lock_granted()), act, then release with e4 01 - exactly B&O's sequence.
@@ -130,8 +109,12 @@ class AudioMaster {
 
     private:
         // Telegram builders
-        MasterlinkTelegram make(uint8_t dest, uint8_t src, uint8_t type, uint8_t ptype, uint8_t subtype,
-                                std::vector<uint8_t> payload, uint8_t src_src = 0, uint8_t dest_src = 0);
+        MasterlinkTelegram make(uint8_t dest, ml::Node src, ml::TelegramType type, ml::PayloadType ptype,
+                                uint8_t subtype, std::vector<uint8_t> payload, uint8_t src_src = 0,
+                                uint8_t dest_src = 0);
+        /*! Most telegrams: from the audio master address (C1). */
+        MasterlinkTelegram make(uint8_t dest, ml::TelegramType type, ml::PayloadType ptype, uint8_t subtype,
+                                std::vector<uint8_t> payload = {});
         void send(MasterlinkTelegram tgram);
         void send_link_info_reply(uint8_t to);
         void send_audio_bus_status(uint8_t to);
@@ -140,6 +123,8 @@ class AudioMaster {
         void send_source_status_idle();
         void send_connect_replies(uint8_t to, uint8_t src);
         void send_clock();
+        void send_link_info_request_to_vm();
+        void send_take_bus_from_vm();
 
         // Flow
         void connect_request(uint8_t node, uint8_t src, clock::time_point now);
@@ -163,8 +148,9 @@ class AudioMaster {
         std::set<uint8_t> pending_requesters;   ///< rooms waiting for replies during arbitration
 
         /*! Bus arbitration with the video master, as observed between a BeoSound 3000 and a Beosystem 3:
-         *  LINK_INFO? -> AUDIO_BUS? -> (if busy) REQUEST 0x44 v3 "cur -> wanted", wait for 0x44 v7
-         *  -> COMMAND STANDBY_0 "01 00 01", wait for COMMAND 0x1C -> distribute. Each wait times out. */
+         *  LINK_INFO? -> AUDIO_BUS? -> (if busy) REQUEST LINK_CONNECT_COMMAND_0 DISCONNECT_SIGNAL
+         *  "cur -> wanted", wait for LINK_CONNECT_STATUS DISCONNECTED_SIGNAL -> COMMAND STANDBY_0 on the
+         *  audio link, wait for COMMAND 0x1C (bus released) -> distribute. Each wait times out. */
         enum class ArbitrationStep { none, link_info, audio_bus, change_request, claim } arbitration = ArbitrationStep::none;
         clock::time_point arbitration_deadline;
         uint8_t vm_busy_source = 0;
