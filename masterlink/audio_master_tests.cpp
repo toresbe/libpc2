@@ -81,6 +81,7 @@ TEST(AudioMaster, SerializedChecksumMatchesCapture) {
     // REQUEST LINK_INFO to the video master, as captured: ... 9a 00
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.listen_to_video_source(0x0b);
     ASSERT_TRUE(host.sent.size() >= 1);
     EXPECT_EQ(host.sent[0], (Bytes{0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x01, 0x01, 0x00, 0x9a, 0x00}));
@@ -98,6 +99,7 @@ TEST(AudioMaster, ParsesDestSourceFromRightByte) {
 TEST(AudioMaster, ReplaysLinkRoomConversation) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto [got, expected] = replay(am, host, conversation_137_420);
     EXPECT_EQ(got.size(), expected.size()) << diff(expected, got);
     EXPECT_EQ(diff(expected, got), std::string("")) << diff(expected, got);
@@ -111,6 +113,7 @@ TEST(AudioMaster, ReplaysLinkRoomConversation) {
 TEST(AudioMaster, ReplaysTvAndStandby) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     bool listening_before_standby = false;
     auto [got, expected] = replay(am, host, tv_735_780, {
         {735.9, [&] { am.listen_to_video_source(0x0b); }},
@@ -125,6 +128,7 @@ TEST(AudioMaster, ReplaysTvAndStandby) {
 TEST(AudioMaster, ReplaysTvAndStandbySecondTime) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto [got, expected] = replay(am, host, tv_1627_1642, {
         {1627.4, [&] { am.listen_to_video_source(0x0b); }},
         {1641.1, [&] { am.local_standby(); }},
@@ -136,6 +140,7 @@ TEST(AudioMaster, ReplaysTvAndStandbySecondTime) {
 TEST(AudioMaster, ReplaysAllStandbyFromLinkRoom) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     // pre-state: distributing RADIO (0x6f) to node 01, no video master answering
     auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x6f, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(1500));
@@ -152,6 +157,7 @@ TEST(AudioMaster, ReplaysAllStandbyFromLinkRoom) {
 TEST(AudioMaster, ReplaysTakingBusBackFromVideoMaster) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.listen_to_video_source(0x0b);
     auto confirm = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x07, 0x05, 0x02, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(confirm, at(900));
@@ -165,6 +171,7 @@ TEST(AudioMaster, ReplaysTakingBusBackFromVideoMaster) {
 TEST(AudioMaster, StartupAndPeriodicClock) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     am.start(at(0));
     // idle SOURCE_STATUS from PC_1, CLOCK, LINK_INFO probe
     ASSERT_TRUE(host.sent.size() == 3);
@@ -181,6 +188,7 @@ TEST(AudioMaster, StartupAndPeriodicClock) {
 TEST(AudioMaster, NoVideoMasterMeansTakeBusAfterTimeout) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(10));
     EXPECT_EQ(am.state() == AudioMaster::BusState::arbitrating, true);
@@ -194,10 +202,129 @@ TEST(AudioMaster, NoVideoMasterMeansTakeBusAfterTimeout) {
 TEST(AudioMaster, LocalStandbyKeepsDistributingToListeners) {
     FakeHost host;
     AudioMaster am(host);
+    am.set_lock_participation(false);   // 2018 captures: no lock traffic
     auto req = incoming({0xc1, 0x01, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x8d, 0x00, 0x02, 0x01, 0x00, 0x00});
     am.handle(req, at(10));
     am.tick(at(12));
     am.local_standby();
     EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
     EXPECT_EQ(host.distributing, true);
+}
+
+
+// ---- Bus handover and lock, checked against what the BeoSound 3000 audio master sent (live, 2026-11-27)
+
+namespace {
+    // MLGW bytes have no checksum/EOT: compare without them
+    Bytes strip(const Bytes &b) { return Bytes(b.begin(), b.end() - 2); }
+    bool sent_contains(const FakeHost &h, const Bytes &mlgw) {
+        for (auto &b : h.sent) if (strip(b) == mlgw) return true;
+        return false;
+    }
+}
+
+// The video master wants the bus for TV while we distribute N.RADIO (capture §8, 04:02:02)
+TEST(AudioMasterHandover, VideoMasterTakesTheBus) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.set_lock_participation(false);
+    auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0xa1, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(0));
+    am.tick(at(2));                                   // no VM answer: take the bus
+    ASSERT_TRUE(am.state() == AudioMaster::BusState::distributing);
+    host.sent.clear();
+    // VM: REQUEST 0x44 v3 "02 a1 00 02 01 00 03 01 00 00 00 02 0b"
+    auto change = incoming({0xc1, 0xc0, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x44, 0x0d, 0x03,
+                            0x02, 0xa1, 0x00, 0x02, 0x01, 0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x02, 0x0b});
+    am.handle(change, at(3));
+    // BS3000 answered: c0 c1 01 14 00 00 00 44 0d 07 02 a1 00 02 01 00 03 01 00 00 00 03 0b
+    EXPECT_EQ(sent_contains(host, {0xc0, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x0d, 0x07,
+                                   0x02, 0xa1, 0x00, 0x02, 0x01, 0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x03, 0x0b}), true);
+    host.sent.clear();
+    auto claim = incoming({0xc1, 0xc0, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x10, 0x03, 0x03, 0x01, 0x00, 0x01});
+    am.handle(claim, at(3.2));
+    EXPECT_EQ(am.state() == AudioMaster::BusState::idle, true);
+    EXPECT_EQ(host.distributing, false);
+    // BS3000: c0 c1 01 0a 00 00 00 1c 01 02 01
+    EXPECT_EQ(sent_contains(host, {0xc0, 0xc1, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x1c, 0x01, 0x02, 0x01}), true);
+}
+
+// A room wants N.MUSIC while the video master plays TV on the bus (capture §8, 04:02:32)
+TEST(AudioMasterHandover, ClaimBusFromBusyVideoMaster) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.set_lock_participation(false);
+    auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x7a, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(0));
+    auto li = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x02, 0x01, 0x01});
+    am.handle(li, at(0.03));
+    host.sent.clear();
+    auto busy = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x08, 0x05, 0x06, 0x02, 0x01, 0x00, 0x0b, 0x01});
+    am.handle(busy, at(0.08));
+    // BS3000: c0 c1 01 0b 00 00 00 44 0d 03 02 0b 00 02 01 00 03 01 00 00 00 ff 7a
+    EXPECT_EQ(sent_contains(host, {0xc0, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x44, 0x0d, 0x03,
+                                   0x02, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0xff, 0x7a}), true);
+    EXPECT_EQ(am.state() == AudioMaster::BusState::arbitrating, true);
+    host.sent.clear();
+    auto notice = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x44, 0x0d, 0x07,
+                            0x02, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7a});
+    am.handle(notice, at(0.25));
+    // BS3000: c0 c1 01 0a 00 00 00 10 03 03 01 00 01
+    EXPECT_EQ(sent_contains(host, {0xc0, 0xc1, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x10, 0x03, 0x03, 0x01, 0x00, 0x01}), true);
+    EXPECT_EQ(am.state() == AudioMaster::BusState::arbitrating, true);
+    auto released = incoming({0xc1, 0xc0, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x1c, 0x02, 0x01, 0x01, 0x04});
+    am.handle(released, at(0.27));
+    EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
+    EXPECT_EQ(am.listeners(), (std::set<uint8_t>{0x04}));
+    EXPECT_EQ(host.distributing, true);
+}
+
+TEST(AudioMasterHandover, ChangeRequestTimesOutIntoClaim) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.set_lock_participation(false);
+    auto req = incoming({0xc1, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x45, 0x07, 0x01, 0x02, 0x7a, 0x00, 0x02, 0x01, 0x00, 0x00});
+    am.handle(req, at(0));
+    auto li = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x04, 0x03, 0x04, 0x02, 0x01, 0x01});
+    am.handle(li, at(0.03));
+    auto busy = incoming({0xc1, 0xc0, 0x01, 0x14, 0x00, 0x00, 0x00, 0x08, 0x05, 0x06, 0x02, 0x01, 0x00, 0x0b, 0x01});
+    am.handle(busy, at(0.08));
+    am.tick(at(1.2));       // no 0x44 v7: claim anyway
+    am.tick(at(2.4));       // no 0x1C: take the bus
+    EXPECT_EQ(am.state() == AudioMaster::BusState::distributing, true);
+}
+
+// LOCK_MANAGER: we hand the lock over when we hold it, and take it before picking TV (capture §8, 04:02:17)
+TEST(AudioMasterLock, TakeLockBeforeVideoSourceAndHandItOver) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.listen_to_video_source(0x0b, at(0));
+    ASSERT_TRUE(host.sent.size() == 1);
+    // BS3000: 80 c1 01 0b 00 00 00 5c 01 01 01
+    EXPECT_EQ(strip(host.sent[0]), (Bytes{0x80, 0xc1, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x01, 0x01}));
+    host.sent.clear();
+    auto holder = incoming({0xc1, 0x04, 0x01, 0x14, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x02, 0x01});
+    am.handle(holder, at(0.02));
+    // BS3000: 04 c1 01 0a 00 00 00 5c 01 04 01, then LINK_INFO and LINK_CONNECT_1 to the VM
+    ASSERT_TRUE(host.sent.size() == 3);
+    EXPECT_EQ(strip(host.sent[0]), (Bytes{0x04, 0xc1, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x04, 0x01}));
+    EXPECT_EQ(am.holds_bus_lock(), true);
+    host.sent.clear();
+    // A room asks for the lock: we answer (BS3000: 04 c1 01 14 00 00 00 5c 01 02 01) and give it up
+    auto ask = incoming({0x80, 0x04, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x01, 0x01});
+    am.handle(ask, at(10));
+    ASSERT_TRUE(host.sent.size() == 1);
+    EXPECT_EQ(strip(host.sent[0]), (Bytes{0x04, 0xc1, 0x01, 0x14, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x02, 0x01}));
+    auto take = incoming({0xc1, 0x04, 0x01, 0x0a, 0x00, 0x00, 0x00, 0x5c, 0x01, 0x04, 0x01});
+    am.handle(take, at(10.02));
+    EXPECT_EQ(am.holds_bus_lock(), false);
+}
+
+TEST(AudioMasterLock, NobodyHoldsTheLock) {
+    FakeHost host;
+    AudioMaster am(host);
+    am.listen_to_video_source(0x0b, at(0));
+    am.tick(at(0.6));
+    EXPECT_EQ(am.holds_bus_lock(), true);
+    EXPECT_EQ(host.sent.size(), 3u);     // lock request, LINK_INFO, LINK_CONNECT_1
 }

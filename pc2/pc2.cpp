@@ -10,6 +10,7 @@
 
 #include "pc2/pc2.hpp"
 #include "masterlink/audio_master.hpp"
+#include "masterlink/source_center.hpp"
 #include "pc2/pc2device.hpp"
 #include "pc2/mixer.hpp"
 #include "pc2/beo4.hpp"
@@ -35,6 +36,8 @@ bool PC2::open() {
     this->device->init();
     if (this->interface->address_mask == PC2Interface::address_mask_t::audio_master)
         this->beolink->start_audio_master();
+    else if (this->interface->address_mask == PC2Interface::address_mask_t::source_center)
+        this->beolink->start_source_center();
     return true;
 }
 
@@ -55,15 +58,29 @@ class PC2AudioMasterHost : public AudioMasterHost {
 
 void PC2Beolink::start_audio_master() {
     if (this->audio_master) return;
-    this->audio_master_host = new PC2AudioMasterHost(this->pc2);
+    if (!this->audio_master_host) this->audio_master_host = new PC2AudioMasterHost(this->pc2);
     this->audio_master = new AudioMaster(*this->audio_master_host);
     this->audio_master->start();
-    // Timeouts and the periodic clock broadcast
+    this->start_ticker();
+}
+
+void PC2Beolink::start_source_center() {
+    if (this->source_center) return;
+    if (!this->audio_master_host) this->audio_master_host = new PC2AudioMasterHost(this->pc2);
+    this->source_center = new SourceCenter(*this->audio_master_host);
+    this->source_center->start();
+    this->start_ticker();
+}
+
+// Timeouts, delayed announcements and the periodic clock broadcast
+void PC2Beolink::start_ticker() {
+    if (this->ticker) return;
     this->ticking = true;
     this->ticker = new std::thread([this] {
         while (this->ticking) {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            this->audio_master->tick();
+            if (this->audio_master) this->audio_master->tick();
+            if (this->source_center) this->source_center->tick();
         }
     });
 }
@@ -75,11 +92,24 @@ PC2Beolink::~PC2Beolink() {
         delete this->ticker;
     }
     delete this->audio_master;
+    delete this->source_center;
     delete this->audio_master_host;
 }
 
+/** \brief Press a Beo4 key on another node (COMMAND IR_SIMUL_LOW, 0x20), as the BeoMaster 5 panel does
+ *  towards the room's master. Captured: dest c1 01 0a 00 47 00 20 05 02 | 00 01 ff ff <key>.
+ *  (The old hand-written version prefixed a stray 0x12 and had a fixed checksum.)
+ */
 void PC2Beolink::send_beo4_code(uint8_t dest, uint8_t code) {
-    this->pc2->device->send_message({ 0x12, 0xe0, dest, 0xc1, 0x01, 0x0a, 0x00, 0x47, 0x00, 0x20, 0x05, 0x02, 0x00, 0x01, 0xff, 0xff, code, 0x8a, 0x00 });
+    MasterlinkTelegram key;
+    key.dest_node = dest;
+    key.src_node = 0xc1;
+    key.telegram_type = MasterlinkTelegram::telegram_types::command;
+    key.src_src = 0x47;
+    key.payload_type = (MasterlinkTelegram::payload_types)0x20;
+    key.payload_version = 2;
+    key.payload = { 0x00, 0x01, 0xff, 0xff, code };
+    this->send_telegram(key);
 };
 
 void PC2Beolink::request_source(uint8_t source_id) {

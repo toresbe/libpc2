@@ -20,7 +20,10 @@
  */
 void PC2Device::init() {
     this->send_message({ 0xf1 });
-    if (this->pc2->interface->address_mask == PC2Interface::address_mask_t::beoport)
+    // Source center: B&O's software uses the Beoport values when the PC is "not main PC"
+    // (capture PC_messing_round_commented). Unverified for a BeoMaster 5 in slave mode.
+    if (this->pc2->interface->address_mask == PC2Interface::address_mask_t::beoport
+            || this->pc2->interface->address_mask == PC2Interface::address_mask_t::source_center)
         this->send_message({ 0x80, 0x40, 0x00 });
     else
         this->send_message({ 0x80, 0x01, 0x00 });
@@ -76,6 +79,7 @@ void PC2Device::set_address_filter(PC2Interface::address_mask_t address_mask) {
             this->pc2->device->send_message({ 0xf6, 0x10, 0xc1, 0x80, 0x83, 0x05, 0x00, 0x00 });
             return;
         case PC2Interface::address_mask_t::beoport:
+        case PC2Interface::address_mask_t::source_center:
             BOOST_LOG_TRIVIAL(info) << "Setting address filter to Beoport PC2 mode";
             this->pc2->device->send_message({ 0xf6, 0x00, 0x82, 0x80, 0x83 });
             return;

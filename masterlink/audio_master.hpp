@@ -13,6 +13,7 @@
 #define __ML_AUDIO_MASTER_HPP
 
 #include <chrono>
+#include <functional>
 #include <cstdint>
 #include <ctime>
 #include <mutex>
@@ -73,6 +74,8 @@ class AudioMaster {
         static constexpr uint8_t pt_link_connect_status = 0x44; ///< B&O: LINK_CONNECT_STATUS (libpc2: TRACK_INFO)
         static constexpr uint8_t pt_pri_system = 0x82;     ///< B&O: PRI_SYSTEM_STATUS (libpc2: TRACK_INFO_LONG)
         static constexpr uint8_t pt_source_status = 0x87;  ///< B&O: SOURCE_STATUS (libpc2: STATUS_INFO)
+        static constexpr uint8_t pt_bus_released = 0x1c;   ///< unnamed; confirms the audio bus was handed over
+        static constexpr uint8_t pt_lock_manager = 0x5c;   ///< B&O: LOCK_MANAGER (bus lock rooms take first)
 
         static constexpr uint8_t src_pc = 0x47;
 
@@ -89,12 +92,16 @@ class AudioMaster {
          *  to us are moved to it. */
         void set_local_source(uint8_t src);
         /*! Ask the video master for one of its sources (e.g. TV) and play it from the bus. */
-        void listen_to_video_source(uint8_t src);
+        void listen_to_video_source(uint8_t src, clock::time_point now = clock::now());
         /*! Local standby: stop listening to the video master. Distribution to link rooms that
          *  still listen continues, as B&O's software does. */
         void local_standby();
         /*! "All standby": tell every node to switch off, and stop everything. */
-        void all_standby();
+        void all_standby(clock::time_point now = clock::now());
+        /*! Take part in the LOCK_MANAGER (0x5C) bus lock (default on). The 2018 BM5 captures show no
+         *  lock traffic at all, so replays of those turn it off. */
+        void set_lock_participation(bool on);
+        bool holds_bus_lock();
 
         // Introspection (tests, UI)
         BusState state();
@@ -103,6 +110,7 @@ class AudioMaster {
 
         static constexpr std::chrono::milliseconds vm_reply_timeout{1000};
         static constexpr std::chrono::seconds clock_interval{430};  ///< observed: ~7 min 10 s
+        static constexpr std::chrono::milliseconds lock_timeout{500};
 
     private:
         // Telegram builders
@@ -125,6 +133,9 @@ class AudioMaster {
         void stop_distribution(bool announce_stopped);
         void change_source(uint8_t new_src);
         void stop_listening_to_vm(bool tell_vm);
+        void with_lock(std::function<void()> action, clock::time_point now);
+        void lock_acquired();
+        void handle_lock(MasterlinkTelegram &t);
 
         AudioMasterHost &host;
         std::recursive_mutex mutex;
@@ -135,8 +146,18 @@ class AudioMaster {
         std::set<uint8_t> listener_nodes;   ///< link rooms connected to our source
         std::set<uint8_t> pending_requesters;   ///< rooms waiting for replies during arbitration
 
-        enum class ArbitrationStep { none, link_info, audio_bus } arbitration = ArbitrationStep::none;
+        /*! Bus arbitration with the video master, as observed between a BeoSound 3000 and a Beosystem 3:
+         *  LINK_INFO? -> AUDIO_BUS? -> (if busy) REQUEST 0x44 v3 "cur -> wanted", wait for 0x44 v7
+         *  -> COMMAND STANDBY_0 "01 00 01", wait for COMMAND 0x1C -> distribute. Each wait times out. */
+        enum class ArbitrationStep { none, link_info, audio_bus, change_request, claim } arbitration = ArbitrationStep::none;
         clock::time_point arbitration_deadline;
+        uint8_t vm_busy_source = 0;
+
+        bool use_lock = true;
+        bool holds_lock = false;
+        bool lock_pending = false;
+        clock::time_point lock_deadline;
+        std::vector<std::function<void()>> lock_waiters;
 
         uint8_t vm_source = 0;              ///< video source we asked for / listen to
         bool started = false;

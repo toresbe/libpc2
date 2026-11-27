@@ -13,12 +13,13 @@ class PC2Interface {
     enum class address_mask_t {
         audio_master,
         beoport,
-        promisc
+        promisc,
+        source_center   ///< provide sources for another audio master (as a BeoMaster 5 does)
     };
     address_mask_t address_mask;
     virtual void beo4_press(Beo4::keycode keycode) = 0;
 
-    // Masterlink audio master hooks (used when address_mask is audio_master).
+    // Masterlink hooks, used when address_mask is audio_master or source_center.
     /*! A link room wants source `src`: start it and return true, or false if unavailable. */
     virtual bool ml_start_source(uint8_t src) { (void)src; return false; }
     /*! No link room listens to our source any more. */

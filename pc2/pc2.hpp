@@ -46,6 +46,7 @@ namespace Beolink {
 #include "pc2/mixer.hpp"
 class AudioMaster;
 class AudioMasterHost;
+class SourceCenter;
 #include <thread>
 #include <atomic>
 
@@ -73,6 +74,12 @@ class PC2Beolink {
     /*! Masterlink audio master logic; created by start_audio_master() in audio master mode. */
     AudioMaster *audio_master = nullptr;
     void start_audio_master();
+    /*! Source center logic; created by start_source_center() in source_center mode. */
+    SourceCenter *source_center = nullptr;
+    void start_source_center();
+    private:
+    void start_ticker();
+    public:
     pending_request_queue_t pending_request_queue;
     void handle_ml_request(MasterlinkTelegram & mlt);
     void handle_ml_status(MasterlinkTelegram & mlt);

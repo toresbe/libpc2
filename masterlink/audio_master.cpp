@@ -102,10 +102,60 @@ void AudioMaster::tick(clock::time_point now) {
         send_clock();
         this->next_clock = now + clock_interval;
     }
+    if (this->lock_pending && now >= this->lock_deadline) {
+        // Nobody answered the lock request: nobody holds it.
+        lock_acquired();
+    }
     if (this->bus_state == BusState::arbitrating && now >= this->arbitration_deadline) {
-        // No (more) answers from a video master: assume there is none and take the bus.
-        BOOST_LOG_TRIVIAL(info) << "No reply from video master; taking the audio bus";
-        start_distribution();
+        if (this->arbitration == ArbitrationStep::change_request) {
+            BOOST_LOG_TRIVIAL(info) << "Video master did not answer the change request; claiming the bus";
+            send(make(addr_video_master, addr_audio_master, 0x0a, pt_standby_0, 3, {0x01, 0x00, 0x01}));
+            this->arbitration = ArbitrationStep::claim;
+            this->arbitration_deadline = now + vm_reply_timeout;
+        } else {
+            // No (more) answers from a video master: assume there is none / it let go, and take the bus.
+            BOOST_LOG_TRIVIAL(info) << "No reply from video master; taking the audio bus";
+            start_distribution();
+        }
+    }
+}
+
+void AudioMaster::set_lock_participation(bool on) { std::scoped_lock lk(this->mutex); this->use_lock = on; }
+bool AudioMaster::holds_bus_lock() { std::scoped_lock lk(this->mutex); return this->holds_lock; }
+
+// LOCK_MANAGER: broadcast REQUEST 0x5C v1 "01"; the current holder answers STATUS v2 "01"; we take it
+// over with COMMAND v4 "01" to the holder. If nobody answers, nobody holds it.
+void AudioMaster::with_lock(std::function<void()> action, clock::time_point now) {
+    if (!this->use_lock || this->holds_lock) { action(); return; }
+    this->lock_waiters.push_back(action);
+    if (!this->lock_pending) {
+        this->lock_pending = true;
+        this->lock_deadline = now + lock_timeout;
+        send(make(addr_all, addr_audio_master, 0x0b, pt_lock_manager, 1, {0x01}));
+    }
+}
+
+void AudioMaster::lock_acquired() {
+    this->lock_pending = false;
+    this->holds_lock = true;
+    auto waiters = std::move(this->lock_waiters);
+    this->lock_waiters.clear();
+    for (auto &w : waiters) w();
+}
+
+void AudioMaster::handle_lock(MasterlinkTelegram &t) {
+    const uint8_t type = t.telegram_type;
+    if (type == 0x0b && t.dest_node == addr_all) {
+        // Someone wants the lock; answer if we hold it
+        if (this->use_lock && this->holds_lock && t.src_node != addr_audio_master)
+            send(make(t.src_node, addr_audio_master, 0x14, pt_lock_manager, 2, {0x01}));
+    } else if (type == 0x14 && t.dest_node == addr_audio_master && this->lock_pending) {
+        // The holder hands it to us
+        send(make(t.src_node, addr_audio_master, 0x0a, pt_lock_manager, 4, {0x01}));
+        lock_acquired();
+    } else if (type == 0x0a && t.dest_node == addr_audio_master) {
+        // We handed it over
+        this->holds_lock = false;
     }
 }
 
@@ -116,16 +166,18 @@ void AudioMaster::set_local_source(uint8_t src) {
         change_source(src);
 }
 
-void AudioMaster::listen_to_video_source(uint8_t src) {
+void AudioMaster::listen_to_video_source(uint8_t src, clock::time_point now) {
     std::scoped_lock lk(this->mutex);
     if (this->bus_state == BusState::distributing)
         stop_distribution(false);
     this->vm_source = src;
-    // As captured: LINK_INFO to the VM, then LINK_CONNECT_COMMAND_1 for the source. The VM then
+    // As captured: (lock), LINK_INFO to the VM, then LINK_CONNECT_COMMAND_1 for the source. The VM then
     // asks us LINK_INFO and AUDIO_BUS (answered in handle()) and confirms with LINK_CONNECT_STATUS.
-    send(make(addr_video_master, addr_audio_master, 0x0b, pt_link_info, 4, {0x01, 0x01, 0x00}));
-    send(make(addr_video_master, addr_audio_master, 0x0b, pt_link_connect, 1,
-              {0x02, src, 0x00, 0x02, 0x01, 0x00, 0x00}));
+    with_lock([this, src] {
+        send(make(addr_video_master, addr_audio_master, 0x0b, pt_link_info, 4, {0x01, 0x01, 0x00}));
+        send(make(addr_video_master, addr_audio_master, 0x0b, pt_link_connect, 1,
+                  {0x02, src, 0x00, 0x02, 0x01, 0x00, 0x00}));
+    }, now);
 }
 
 void AudioMaster::local_standby() {
@@ -139,14 +191,16 @@ void AudioMaster::local_standby() {
         stop_distribution(false);
 }
 
-void AudioMaster::all_standby() {
+void AudioMaster::all_standby(clock::time_point now) {
     std::scoped_lock lk(this->mutex);
-    send(make(addr_all, addr_audio_master, 0x0a, pt_standby_1, 1, {}));
-    if (this->bus_state == BusState::listening_to_vm)
-        stop_listening_to_vm(false);
-    if (this->bus_state == BusState::distributing || this->bus_state == BusState::arbitrating)
-        stop_distribution(true);
-    this->local_source = 0;
+    with_lock([this] {
+        send(make(addr_all, addr_audio_master, 0x0a, pt_standby_1, 1, {}));
+        if (this->bus_state == BusState::listening_to_vm)
+            stop_listening_to_vm(false);
+        if (this->bus_state == BusState::distributing || this->bus_state == BusState::arbitrating)
+            stop_distribution(true);
+        this->local_source = 0;
+    }, now);
 }
 
 AudioMaster::BusState AudioMaster::state() { std::scoped_lock lk(this->mutex); return this->bus_state; }
@@ -268,6 +322,11 @@ void AudioMaster::handle(MasterlinkTelegram &t, clock::time_point now) {
     const bool to_us = (t.dest_node == addr_audio_master);
     const bool from_vm = (from == addr_video_master);
 
+    if (pt == pt_lock_manager) {
+        handle_lock(t);
+        return;
+    }
+
     if (type == 0x0b) {     // REQUEST
         if (!to_us) return;
         switch (pt) {
@@ -288,6 +347,20 @@ void AudioMaster::handle(MasterlinkTelegram &t, clock::time_point now) {
                 if (t.payload.size() >= 2)
                     connect_request(from, t.payload[1], now);
                 return;
+            case pt_link_connect_status:
+                // REQUEST 0x44 v3 "02 <cur> 00 02 01 00 03 01 00 00 00 xx <wanted>": the video master wants
+                // the bus for <wanted>. Answer with the change notice (v7), tell our listeners too; it will
+                // then claim the bus with STANDBY_0 "01 00 01".
+                if (t.payload.size() >= 13) {
+                    uint8_t cur = this->bus_state == BusState::distributing ? this->source : t.payload[1];
+                    uint8_t wanted = t.payload[12];
+                    for (auto node : this->listener_nodes)
+                        send(make(node, addr_audio_master, 0x14, pt_link_connect_status, 7,
+                                  {0x02, cur, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, wanted}));
+                    send(make(from, addr_audio_master, 0x14, pt_link_connect_status, 7,
+                              {0x02, cur, 0x00, 0x02, 0x01, 0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x03, wanted}));
+                }
+                return;
             default:
                 BOOST_LOG_TRIVIAL(debug) << "Unhandled Masterlink request, payload type " << (int)pt;
                 return;
@@ -303,11 +376,21 @@ void AudioMaster::handle(MasterlinkTelegram &t, clock::time_point now) {
             if (t.payload.empty()) {
                 start_distribution();       // v4 empty: the VM is not using the bus
             } else {
-                // The VM distributes something: claim the bus (STANDBY_0 "01 00 01"), then take it
-                BOOST_LOG_TRIVIAL(info) << "Video master is using the audio bus; asking it to release";
-                send(make(addr_video_master, addr_audio_master, 0x0a, pt_standby_0, 3, {0x01, 0x00, 0x01}));
-                start_distribution();
+                // v6 "02 01 00 <src> [01]": the VM distributes <src>. Ask to change it to ours (0x44 v3).
+                this->vm_busy_source = t.payload.size() >= 4 ? t.payload[3] : 0;
+                BOOST_LOG_TRIVIAL(info) << "Video master is using the audio bus; requesting a change";
+                send(make(addr_video_master, addr_audio_master, 0x0b, pt_link_connect_status, 3,
+                          {0x02, this->vm_busy_source, 0x00, 0x02, 0x01, 0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0xff,
+                           this->source}));
+                this->arbitration = ArbitrationStep::change_request;
+                this->arbitration_deadline = now + vm_reply_timeout;
             }
+        } else if (pt == pt_link_connect_status && t.telegram_type == 0x14 && t.payload_version == 7
+                && this->bus_state == BusState::arbitrating && this->arbitration == ArbitrationStep::change_request) {
+            // The VM agreed (change notice): claim the bus
+            send(make(addr_video_master, addr_audio_master, 0x0a, pt_standby_0, 3, {0x01, 0x00, 0x01}));
+            this->arbitration = ArbitrationStep::claim;
+            this->arbitration_deadline = now + vm_reply_timeout;
         } else if (pt == pt_link_connect_status && this->vm_source) {
             // VM confirms the source we asked for: play it from the bus
             this->bus_state = BusState::listening_to_vm;
@@ -337,9 +420,17 @@ void AudioMaster::handle(MasterlinkTelegram &t, clock::time_point now) {
             return;
         }
         if (pt == pt_standby_0 && from_vm && to_us) {
-            // The video master takes the audio bus ("01 00 01")
-            if (this->bus_state == BusState::distributing || this->bus_state == BusState::arbitrating)
+            // The video master takes the audio bus ("01 00 01"); confirm with COMMAND 0x1C v2 "01"
+            if (this->bus_state == BusState::distributing || this->bus_state == BusState::arbitrating) {
                 stop_distribution(false);
+                send(make(addr_video_master, addr_audio_master, 0x0a, pt_bus_released, 2, {0x01}));
+            }
+            return;
+        }
+        if (pt == pt_bus_released && from_vm && to_us) {
+            // The VM confirms it let go of the bus
+            if (this->bus_state == BusState::arbitrating && this->arbitration == ArbitrationStep::claim)
+                start_distribution();
             return;
         }
         if (pt == pt_source_control && to_us && t.payload.size() >= 2) {
